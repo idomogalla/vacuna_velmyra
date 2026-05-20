@@ -1,0 +1,42 @@
+# Ignorar todo por defecto
+*
+
+# Permitir archivos del proyecto
+!*.Rproj
+!*.R
+!*.r
+!*.Rmd
+!*.rmd
+!*.qmd
+!*.html
+*.nb.html
+!README.md
+!renv.lock
+!.Rprofile
+!.gitignore
+
+# Permitir estructura de renv necesaria para reproducibilidad
+!renv/
+!renv/activate.R
+!renv/settings.json
+
+# No subir librerías/cache de renv
+renv/library/
+renv/staging/
+renv/sandbox/
+renv/python/
+
+# Carpetas para mantener
+!datos/
+!guias/
+!presentacion/
+
+# Ignorar archivos de RStudio y sesión
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+# Ignorar basura de sistema
+.DS_Store
+Thumbs.db
