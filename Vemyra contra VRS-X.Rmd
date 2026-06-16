@@ -35,6 +35,9 @@ set.seed(42)
 library(tidyverse)
 library(MASS)
 library(rethinking)
+library(dagitty)
+library(ggdag)
+options(encoding = "UTF-8")
 ```
 
 # Carga de datos
@@ -42,7 +45,7 @@ library(rethinking)
 ```{r}
 url_csv <- "https://velmyra.netlify.app/datos/cohorte_fase4.csv"
 df <- read_csv(url_csv, show_col_types = FALSE)
- 
+
 # Verificación rápida de columnas esperadas
 
 cols_esperadas <- c("hospitalizada", "vacunada", "edad", "sexo",
@@ -54,7 +57,7 @@ if (length(faltantes) > 0) {
   warning("Columnas faltantes: ", paste(faltantes, collapse = ", "),
           "\n  Verificar diccionario.md del IICA")
 }
- 
+
 cat("Dimensiones del dataset:", nrow(df), "filas x", ncol(df), "columnas\n")
 glimpse(df)
 ```
@@ -64,29 +67,28 @@ glimpse(df)
 ## Variables auxiliares para el EDA
 
 ```{r}
-# Crear una copia para el EDA evita modificar df, que se usa en los modelos.
-df_eda <- df %>%
+bins_vacunados <- c("0-90", "91-180", "181-270", "271-365")
+niveles_exposicion_tiempo <- c("No vacunada", bins_vacunados)
+
+df <- df %>%
   mutate(
-    grupo_edad_eda = case_when(
-      edad < 50 ~ "18-49",
-      edad < 65 ~ "50-64",
-      TRUE ~ "65+"
+    edad_cat = cut(
+      edad,
+      breaks = c(17, 49, 69, 100),
+      labels = c("18-49", "50-69", "70+")
     ),
-    grupo_edad_eda = factor(
-      grupo_edad_eda,
-      levels = c("18-49", "50-64", "65+")
-    ),
-    bin_tiempo_eda = case_when(
+
+    bin_tiempo = case_when(
       vacunada == 0 ~ "No vacunada",
-      dias_desde_vacunacion <= 90 ~ "0-90",
-      dias_desde_vacunacion <= 180 ~ "91-180",
-      dias_desde_vacunacion <= 270 ~ "181-270",
-      dias_desde_vacunacion <= 365 ~ "271-365",
+      vacunada == 1 & dias_desde_vacunacion >= 0   & dias_desde_vacunacion <= 90  ~ "0-90",
+      vacunada == 1 & dias_desde_vacunacion >= 91  & dias_desde_vacunacion <= 180 ~ "91-180",
+      vacunada == 1 & dias_desde_vacunacion >= 181 & dias_desde_vacunacion <= 270 ~ "181-270",
+      vacunada == 1 & dias_desde_vacunacion >= 271 & dias_desde_vacunacion <= 365 ~ "271-365",
       TRUE ~ NA_character_
     ),
-    bin_tiempo_eda = factor(
-      bin_tiempo_eda,
-      levels = c("No vacunada", "0-90", "91-180", "181-270", "271-365")
+    bin_tiempo = factor(
+      bin_tiempo,
+      levels = niveles_exposicion_tiempo
     )
   )
 ```
@@ -94,17 +96,16 @@ df_eda <- df %>%
 ## Calidad de datos
 
 ```{r}
-# Revisar valores faltantes, unicidad y el uso de -1 como código especial.
+# Revisar valores faltantes y unicidad
 tabla_nulls <- tibble(
   columna = names(df),
   cantidad_na = as.integer(sapply(df, function(columna) sum(is.na(columna)))),
-  valores_distintos = as.integer(sapply(df, function(columna) n_distinct(columna))),
-  cantidad_menos_uno = as.integer(sapply(df, function(columna) sum(columna == -1, na.rm = TRUE)))
+  valores_distintos = as.integer(sapply(df, function(columna) n_distinct(columna)))
 )
 
 tabla_nulls <- tabla_nulls %>%
   mutate(porcentaje_na = round(100 * cantidad_na / nrow(df), 2)) %>%
-  dplyr::select(columna, cantidad_na, porcentaje_na, valores_distintos, cantidad_menos_uno)
+  dplyr::select(columna, cantidad_na, porcentaje_na, valores_distintos)
 
 tabla_nulls
 ```
@@ -124,20 +125,27 @@ tabla_id
 
 ```{r}
 # Verificar que dias_desde_vacunacion == -1 identifica a no vacunados.
-tabla_menos_uno_tiempo <- df_eda %>%
-  count(vacunada, dias_menos_uno = dias_desde_vacunacion == -1)
+tabla_estado_vacunacion_tiempo <- df %>%
+  mutate(
+    estado_vacunacion = case_when(
+      dias_desde_vacunacion == -1 ~ "No vacunada",
+      dias_desde_vacunacion >= 0 & dias_desde_vacunacion <= 365 ~ "Vacunada",
+      TRUE ~ "Valor faltante o fuera de rango"
+    )
+  ) %>%
+  count(estado_vacunacion, name = "cantidad")
 
-tabla_menos_uno_tiempo
+tabla_estado_vacunacion_tiempo
 ```
 
 ## Distribuciones básicas
 
 ```{r}
 # Distribución de edades.
-grafico_edad <- ggplot(df_eda, aes(x = edad)) +
+grafico_edad <- ggplot(df, aes(x = edad)) +
   geom_histogram(binwidth = 5, boundary = 0, fill = "#2C7FB8", color = "white") +
   labs(
-    title = "Distribución de edad",
+    title = "Distribuci\u00f3n de edad",
     x = "Edad",
     y = "Cantidad de personas"
   ) +
@@ -148,14 +156,14 @@ print(grafico_edad)
 
 ```{r}
 # Distribución del tiempo desde vacunación solo entre vacunados.
-df_eda_vacunados <- df_eda %>%
+df_eda_vacunados <- df %>%
   filter(vacunada == 1)
 
 grafico_dias_vacunados <- ggplot(df_eda_vacunados, aes(x = dias_desde_vacunacion)) +
   geom_histogram(binwidth = 30, boundary = 0, fill = "#41AB5D", color = "white") +
   labs(
-    title = "Días desde vacunación entre vacunados",
-    x = "Días desde vacunación",
+    title = "D\u00edas desde vacunaci\u00f3n entre vacunados",
+    x = "D\u00edas desde vacunaci\u00f3n",
     y = "Cantidad de personas"
   ) +
   theme_minimal()
@@ -165,39 +173,39 @@ print(grafico_dias_vacunados)
 
 ```{r}
 # Barras para variables categóricas principales.
-grafico_sexo <- ggplot(df_eda, aes(x = sexo)) +
+grafico_sexo <- ggplot(df, aes(x = sexo)) +
   geom_bar(fill = "#756BB1") +
-  labs(title = "Distribución por sexo", x = "Sexo", y = "Cantidad") +
+  labs(title = "Distribuci\u00f3n por sexo", x = "Sexo", y = "Cantidad") +
   theme_minimal()
 
-grafico_comorbilidad <- ggplot(df_eda, aes(x = factor(comorbilidad))) +
+grafico_comorbilidad <- ggplot(df, aes(x = factor(comorbilidad))) +
   geom_bar(fill = "#756BB1") +
-  labs(title = "Distribución por comorbilidad", x = "Comorbilidad", y = "Cantidad") +
+  labs(title = "Distribuci\u00f3n por comorbilidad", x = "Comorbilidad", y = "Cantidad") +
   theme_minimal()
 
-grafico_centro <- ggplot(df_eda, aes(x = factor(centro))) +
+grafico_centro <- ggplot(df, aes(x = factor(centro))) +
   geom_bar(fill = "#756BB1") +
-  labs(title = "Distribución por centro", x = "Centro", y = "Cantidad") +
+  labs(title = "Distribuci\u00f3n por centro", x = "Centro", y = "Cantidad") +
   theme_minimal()
 
-grafico_vacunada <- ggplot(df_eda, aes(x = factor(vacunada))) +
+grafico_vacunada <- ggplot(df, aes(x = factor(vacunada))) +
   geom_bar(fill = "#756BB1") +
-  labs(title = "Distribución por vacunación", x = "Vacunada", y = "Cantidad") +
+  labs(title = "Distribuci\u00f3n por vacunaci\u00f3n", x = "Vacunada", y = "Cantidad") +
   theme_minimal()
 
-grafico_mes_inclusion <- ggplot(df_eda, aes(x = factor(mes_inclusion))) +
+grafico_mes_inclusion <- ggplot(df, aes(x = factor(mes_inclusion))) +
   geom_bar(fill = "#756BB1") +
-  labs(title = "Distribución por mes de inclusión", x = "Mes de inclusión", y = "Cantidad") +
+  labs(title = "Distribuci\u00f3n por mes de inclusi\u00f3n", x = "Mes de inclusi\u00f3n", y = "Cantidad") +
   theme_minimal()
 
-grafico_expuesto <- ggplot(df_eda, aes(x = factor(expuesto))) +
+grafico_expuesto <- ggplot(df, aes(x = factor(expuesto))) +
   geom_bar(fill = "#756BB1") +
-  labs(title = "Distribución por exposición", x = "Expuesto", y = "Cantidad") +
+  labs(title = "Distribuci\u00f3n por exposici\u00f3n", x = "Expuesto", y = "Cantidad") +
   theme_minimal()
 
-grafico_hospitalizada <- ggplot(df_eda, aes(x = factor(hospitalizada))) +
+grafico_hospitalizada <- ggplot(df, aes(x = factor(hospitalizada))) +
   geom_bar(fill = "#756BB1") +
-  labs(title = "Distribución por hospitalización", x = "Hospitalizada", y = "Cantidad") +
+  labs(title = "Distribuci\u00f3n por hospitalizaci\u00f3n", x = "Hospitalizada", y = "Cantidad") +
   theme_minimal()
 
 print(grafico_sexo)
@@ -213,7 +221,7 @@ print(grafico_hospitalizada)
 
 ```{r}
 # Tasa de hospitalización por estado de vacunación.
-tabla_hospitalizacion_vacunada <- df_eda %>%
+tabla_hospitalizacion_vacunada <- df %>%
   group_by(vacunada) %>%
   summarise(
     total = n(),
@@ -239,9 +247,9 @@ grafico_hospitalizacion_vacunada <- ggplot(
     expand = expansion(mult = c(0, 0.15))
   ) +
   labs(
-    title = "Hospitalización por estado de vacunación",
-    x = "Estado de vacunación",
-    y = "Proporción hospitalizada"
+    title = "Hospitalizaci\u00f3n por estado de vacunaci\u00f3n",
+    x = "Estado de vacunaci\u00f3n",
+    y = "Proporci\u00f3n hospitalizada"
   ) +
   theme_minimal()
 
@@ -250,9 +258,9 @@ print(grafico_hospitalizacion_vacunada)
 
 ```{r}
 # Tasa de hospitalización entre vacunados por tiempo desde vacunación.
-tabla_hospitalizacion_tiempo <- df_eda %>%
+tabla_hospitalizacion_tiempo <- df %>%
   filter(vacunada == 1) %>%
-  group_by(bin_tiempo_eda) %>%
+  group_by(bin_tiempo) %>%
   summarise(
     total = n(),
     hospitalizados = sum(hospitalizada == 1),
@@ -265,7 +273,7 @@ tabla_hospitalizacion_tiempo
 
 grafico_hospitalizacion_tiempo <- ggplot(
   tabla_hospitalizacion_tiempo,
-  aes(x = bin_tiempo_eda, y = proporcion_hospitalizada)
+  aes(x = bin_tiempo, y = proporcion_hospitalizada)
 ) +
   geom_col(fill = "#41AB5D") +
   geom_text(aes(label = etiqueta), vjust = -0.4) +
@@ -274,9 +282,9 @@ grafico_hospitalizacion_tiempo <- ggplot(
     expand = expansion(mult = c(0, 0.15))
   ) +
   labs(
-    title = "Hospitalización entre vacunados por días desde vacunación",
-    x = "Días desde vacunación",
-    y = "Proporción hospitalizada"
+    title = "Hospitalizaci\u00f3n entre vacunados por d\u00edas desde vacunaci\u00f3n",
+    x = "D\u00edas desde vacunaci\u00f3n",
+    y = "Proporci\u00f3n hospitalizada"
   ) +
   theme_minimal()
 
@@ -287,9 +295,9 @@ print(grafico_hospitalizacion_tiempo)
 
 ```{r}
 # Mirar no vacunados por grupo de edad da otra perspectiva del riesgo base.
-tabla_no_vacunados_edad <- df_eda %>%
+tabla_no_vacunados_edad <- df %>%
   filter(vacunada == 0) %>%
-  group_by(grupo_edad_eda) %>%
+  group_by(edad_cat) %>%
   summarise(
     total = n(),
     hospitalizados = sum(hospitalizada == 1),
@@ -302,7 +310,7 @@ tabla_no_vacunados_edad
 
 grafico_no_vacunados_edad <- ggplot(
   tabla_no_vacunados_edad,
-  aes(x = grupo_edad_eda, y = proporcion_hospitalizada)
+  aes(x = edad_cat, y = proporcion_hospitalizada)
 ) +
   geom_col(fill = "#F16913") +
   geom_text(aes(label = etiqueta), vjust = -0.4) +
@@ -311,9 +319,9 @@ grafico_no_vacunados_edad <- ggplot(
     expand = expansion(mult = c(0, 0.15))
   ) +
   labs(
-    title = "Hospitalización en no vacunados por grupo de edad",
+    title = "Hospitalizaci\u00f3n en no vacunados por grupo de edad",
     x = "Grupo de edad",
-    y = "Proporción hospitalizada"
+    y = "Proporci\u00f3n hospitalizada"
   ) +
   theme_minimal()
 
@@ -322,38 +330,40 @@ print(grafico_no_vacunados_edad)
 
 # PASO 1 — Reproducción del modelo frecuentista oficial
 
-```{r}
-# Modelo logístico
-
-modelo_freq <- glm(
-  hospitalizada ~ vacunada + edad + sexo + comorbilidad + centro,
+```{r, echo=FALSE, comment=""}
+# Especificación oficial publicada en la web ficticia de Velmyra.
+modelo_freq <- glm(hospitalizada ~ vacunada + edad_cat + sexo + comorbilidad + centro,
   data   = df,
   family = binomial(link = "logit")
 )
- 
-# Odds Ratio e IC
 
-coef_V   <- coef(modelo_freq)["vacunada"]
-se_V     <- sqrt(vcov(modelo_freq)["vacunada", "vacunada"])
-OR_obs   <- exp(coef_V)
-IC_OR_lo <- exp(coef_V - 1.96 * se_V)
-IC_OR_hi <- exp(coef_V + 1.96 * se_V)
- 
-VE_freq   <- 1 - OR_obs
-VE_IC_lo  <- 1 - IC_OR_hi
-VE_IC_hi  <- 1 - IC_OR_lo
- 
+# Odds Ratio y IC Wald para la vacuna
+
+coef_V   <- as.numeric(coef(modelo_freq)["vacunada"])
+se_V     <- as.numeric(sqrt(vcov(modelo_freq)["vacunada", "vacunada"]))
+p_V      <- as.numeric(summary(modelo_freq)$coefficients["vacunada", "Pr(>|z|)"])
+OR_obs   <- as.numeric(exp(coef_V))
+IC_OR    <- exp(confint.default(modelo_freq)["vacunada", ])
+IC_OR_lo <- as.numeric(IC_OR[1])
+IC_OR_hi <- as.numeric(IC_OR[2])
+
+VE_freq  <- as.numeric(1 - OR_obs)
+VE_IC_lo <- as.numeric(1 - IC_OR_hi)
+VE_IC_hi <- as.numeric(1 - IC_OR_lo)
+
+cat("Modelo oficial publicado: hospitalizada ~ vacunada + edad_cat + sexo + comorbilidad + centro\n")
 cat(sprintf("OR vacunada       : %.3f\n", OR_obs))
 cat(sprintf("IC Wald 95%% OR    : [%.3f, %.3f]\n", IC_OR_lo, IC_OR_hi))
 cat(sprintf("VE = 1 - OR       : %.1f%%\n", 100 * VE_freq))
 cat(sprintf("IC Wald 95%% VE   : [%.1f%%, %.1f%%]\n",
             100 * VE_IC_lo, 100 * VE_IC_hi))
+cat(sprintf("p-valor Wald      : %.3g\n", p_V))
 cat("Esperado: OR ≈ 0.28, IC95% OR ≈ [0.21, 0.38], VE ≈ 72%, IC ≈ [62%, 79%]\n")
 ```
 
 # PASO 2 — Posterior bayesiano vía aproximación cuadrática (rethinking::quap)
 
-```{r}
+```{r, results='asis', comment=""}
 # ---- Priors fase III (se calculan aquí, se reutilizan en paso 6) ----
 # VE_fase3 = 81%  =>  OR = 1 - 0.81 = 0.19  =>  βV = log(0.19) ≈ -1.66
 # IC95% VE [73%, 87%]  =>  OR ∈ [0.13, 0.27]  =>  βV ∈ [log(0.13), log(0.27)]
@@ -361,108 +371,198 @@ cat("Esperado: OR ≈ 0.28, IC95% OR ≈ [0.21, 0.38], VE ≈ 72%, IC ≈ [62%, 
 
 prior_mu_V_informado <- log(1 - 0.81)
 prior_sd_V_informado <- (log(1 - 0.73) - log(1 - 0.87)) / (2 * 1.96)
-cat(sprintf("Prior informado fase III  βV ~ N(%.3f, %.3f²)\n",
-            prior_mu_V_informado, prior_sd_V_informado))
- 
+
+cat(sprintf(
+  "Prior informado fase III $\\beta_V \\sim N(%.2f, %.2f^{2})$",
+  prior_mu_V_informado,
+  prior_sd_V_informado
+))
 ```
 
 ```{r}
 # ---- Preparar data list que quap necesita ----
 # quap no acepta data frames directamente; requiere una lista con vectores.
-# centro tiene 12 categorías: tratarlo como índice requeriría un vector de
-# coeficientes a[centro], lo que complica innecesariamente el modelo para el
-# objetivo del paso 2 (comparar HPDI de bV con IC Wald).
-# Solución: excluir centro del modelo quap. El glm del paso 1 ya lo incluyó
-# y sirvió como referencia; aquí interesa el coeficiente bV, que es robusto
-# a esa omisión dado que centro no confunde la relación vacuna → hospitalización
-# de forma sistemática.
+# El modelo bayesiano replica la estructura principal del oficial:
+# vacunada + edad_cat + sexo + comorbilidad.
+# Omite centro para evitar una parametrización extensa en quap; por eso el HPDI
+# se compara con el Wald oficial como aproximación cercana, no como igualdad exacta.
 
 dat <- list(
   hospitalizada = as.integer(df$hospitalizada),
   vacunada      = as.integer(df$vacunada),
-  edad          = as.numeric(scale(df$edad)),      # estandarizar ayuda a quap
-  sexo          = as.integer(factor(df$sexo)),      # "F"->1, "M"->2
+  edad_50_69    = as.integer(df$edad_cat == "50-69"),
+  edad_70_plus  = as.integer(df$edad_cat == "70+"),
+  sexo          = as.integer(factor(df$sexo)) - 1L,
   comorbilidad  = as.integer(df$comorbilidad)
 )
 ```
 
 ```{r}
 # ---- Modelo quap con prior débil sobre todos los coeficientes ----
-# quap toma una lista de fórmulas:
-#   - La primera especifica la verosimilitud y el predictor lineal
-#   - Las siguientes especifican los priors de cada parámetro
+# quap toma una lista de fórmulas: verosimilitud, predictor lineal y priors.
 
 modelo_quap_debil <- quap(
-  alist(
-    hospitalizada ~ dbinom(1, p),
-    logit(p) <- a + bV * vacunada + bE * edad + bS * sexo + bC * comorbilidad,
-    a  ~ dnorm(0, 2.5),
-    bV ~ dnorm(0, 2.5),
-    bE ~ dnorm(0, 2.5),
-    bS ~ dnorm(0, 2.5),
-    bC ~ dnorm(0, 2.5)
-  ),
-  data = dat
-)
+    alist(
+      hospitalizada ~ dbinom(1, p),
+      logit(p) <- a +
+        bV * vacunada +
+        bE50 * edad_50_69 +
+        bE70 * edad_70_plus +
+        bS * sexo +
+        bCom * comorbilidad,
+
+      a ~ dnorm(0, 2.5),
+      bV ~ dnorm(0, 2.5),
+      bE50 ~ dnorm(0, 2.5),
+      bE70 ~ dnorm(0, 2.5),
+      bS ~ dnorm(0, 2.5),
+      bCom ~ dnorm(0, 2.5)
+    ),
+    data = dat
+  )
 ```
 
 ```{r}
-# ---- Modelo quap con prior informado fase III para βV ----
+# ---- Modelo quap con prior informado fase III solo para βV ----
 
 modelo_quap_informado <- quap(
-  alist(
-    hospitalizada ~ dbinom(1, p),
-    logit(p) <- a + bV * vacunada + bE * edad + bS * sexo + bC * comorbilidad,
-    a  ~ dnorm(0, 2.5),
-    bV ~ dnorm(prior_mu_V_informado, prior_sd_V_informado),  # prior fase III
-    bE ~ dnorm(0, 2.5),
-    bS ~ dnorm(0, 2.5),
-    bC ~ dnorm(0, 2.5)
-  ),
-  data = dat
-)
+    alist(
+      hospitalizada ~ dbinom(1, p),
+      logit(p) <- a +
+        bV * vacunada +
+        bE50 * edad_50_69 +
+        bE70 * edad_70_plus +
+        bS * sexo +
+        bCom * comorbilidad,
+
+      a ~ dnorm(0, 2.5),
+      bV ~ dnorm(prior_mu_V_informado, prior_sd_V_informado),
+      bE50 ~ dnorm(0, 2.5),
+      bE70 ~ dnorm(0, 2.5),
+      bS ~ dnorm(0, 2.5),
+      bCom ~ dnorm(0, 2.5)
+    ),
+    data = dat
+  )
 ```
 
-```{r}
-# ---- Resumen de los modelos ----
+```{r, echo=FALSE, comment=""}
+salida_priors <- capture.output({
+  cat("-- Prior DÉBIL --\n")
+  print(precis(modelo_quap_debil, prob = 0.95, depth = 2))
 
-cat("\n-- Prior DÉBIL --\n")
-print(precis(modelo_quap_debil, prob = 0.95))
- 
-cat("\n-- Prior INFORMADO (fase III) en βV --\n")
-print(precis(modelo_quap_informado, prob = 0.95))
+  cat("\n-- Prior INFORMADO (fase III) en beta_V --\n")
+  print(precis(modelo_quap_informado, prob = 0.95, depth = 2))
+})
+
+cat(paste(salida_priors, collapse = "\n"))
 ```
 
-```{r}
+```{r, echo=FALSE, comment=""}
 # ---- Muestras de la posterior y VE ----
 
 N_samp <- 10000
- 
+
 samp_debil    <- extract.samples(modelo_quap_debil,    n = N_samp)
 samp_informado <- extract.samples(modelo_quap_informado, n = N_samp)
- 
+
 VE_debil     <- 1 - exp(samp_debil$bV)
 VE_informado <- 1 - exp(samp_informado$bV)
- 
+
 hpdi_VE_debil     <- HPDI(VE_debil,     prob = 0.95)
 hpdi_VE_informado <- HPDI(VE_informado, prob = 0.95)
- 
-cat(sprintf("\nPrior DÉBIL    — MAP VE: %.1f%%  |  HPDI 95%%: [%.1f%%, %.1f%%]\n",
+
+cat(sprintf("Prior DÉBIL     — MAP VE: %.1f%%  |  HPDI 95%%: [%.1f%%, %.1f%%]\n",
             100 * (1 - exp(coef(modelo_quap_debil)["bV"])),
             100 * hpdi_VE_debil[1],
             100 * hpdi_VE_debil[2]))
- 
+
 cat(sprintf("Prior INFORMADO — MAP VE: %.1f%%  |  HPDI 95%%: [%.1f%%, %.1f%%]\n",
             100 * (1 - exp(coef(modelo_quap_informado)["bV"])),
             100 * hpdi_VE_informado[1],
             100 * hpdi_VE_informado[2]))
- 
-cat(sprintf("IC Wald frecuentista          : [%.1f%%, %.1f%%]\n",
+
+cat(sprintf("IC Wald frecuentista: [%.1f%%, %.1f%%]\n",
             100 * VE_IC_lo, 100 * VE_IC_hi))
- 
-cat("\nNota: HPDI e IC Wald coinciden numéricamente (n grande, prior débil).\n")
-cat("Pero solo el HPDI admite lectura de CREENCIA: '95% de probabilidad de que VE ∈ [x, y]'.\n")
+
+cat("Nota: el HPDI se compara con el Wald oficial como aproximación cercana, no como igualdad exacta, porque el modelo quap omite centro. Pero solo el HPDI admite lectura de CREENCIA: '95% de probabilidad de que VE ∈ [x, y]'.\n")
 ```
+
+**Limitación**: cuidado con la validez externa del prior informado por fase III.
+
+```{r}
+# ---- Comparación prior vs posterior: modelo débil ----
+
+  posterior_debil <- as_tibble(samp_debil) %>%
+    dplyr::select(a, bV, bE50, bE70, bS, bCom) %>%
+    mutate(distribucion = "Posterior")
+
+  prior_debil <- tibble(
+    a  = rnorm(N_samp, 0, 2.5),
+    bV = rnorm(N_samp, 0, 2.5),
+    bE50 = rnorm(N_samp, 0, 2.5),
+    bE70 = rnorm(N_samp, 0, 2.5),
+    bS = rnorm(N_samp, 0, 2.5),
+    bCom = rnorm(N_samp, 0, 2.5),
+    distribucion = "Prior"
+  )
+
+  long_prior_posterior_debil <- bind_rows(posterior_debil, prior_debil) %>%
+    pivot_longer(
+      cols = -distribucion,
+      names_to = "variable",
+      values_to = "value"
+    )
+
+  long_prior_posterior_debil %>%
+    ggplot(aes(x = value, fill = distribucion)) +
+    geom_density(alpha = 0.75) +
+    theme_bw() +
+    facet_wrap(variable ~ ., scales = "free") +
+    labs(
+      x = "Valor",
+      y = "Densidad",
+      fill = "Distribuci\u00f3n",
+      title = "Modelo d\u00e9bil: prior vs posterior"
+    ) +
+    scale_fill_viridis_d()
+```
+
+
+```{r}
+posterior_informado <- as_tibble(samp_informado) %>%
+    dplyr::select(a, bV, bE50, bE70, bS, bCom) %>%
+    mutate(distribucion = "Posterior")
+
+  prior_informado <- tibble(
+    a  = rnorm(N_samp, 0, 2.5),
+    bV = rnorm(N_samp, prior_mu_V_informado, prior_sd_V_informado),
+    bE50 = rnorm(N_samp, 0, 2.5),
+    bE70 = rnorm(N_samp, 0, 2.5),
+    bS = rnorm(N_samp, 0, 2.5),
+    bCom = rnorm(N_samp, 0, 2.5),
+    distribucion = "Prior"
+  )
+
+  bind_rows(posterior_informado, prior_informado) %>%
+    pivot_longer(
+      cols = -distribucion,
+      names_to = "variable",
+      values_to = "value"
+    ) %>%
+    ggplot(aes(x = value, fill = distribucion)) +
+    geom_density(alpha = 0.75) +
+    theme_bw() +
+    facet_wrap(variable ~ ., scales = "free") +
+    labs(
+      x = "Valor",
+      y = "Densidad",
+      fill = "Distribuci\u00f3n",
+      title = "Modelo informado: prior vs posterior"
+    ) +
+    scale_fill_viridis_d()
+```
+
 
 ```{r}
 # ---- Guardar muestras y MAP para pasos siguientes ----
@@ -476,72 +576,127 @@ N_samp_sens <- N_samp   # alias para paso 6
 ```
 
 # PASO 3 — Estratificación Beta-Binomial por tiempo desde vacunación
-
 ```{r}
-# Crear bins de días desde vacunación
-df <- df %>%
-  mutate(
-    bin_tiempo = case_when(
-      vacunada == 0                              ~ NA_character_,
-      dias_desde_vacunacion >= 0  & dias_desde_vacunacion <= 90  ~ "0–90",
-      dias_desde_vacunacion >= 91 & dias_desde_vacunacion <= 180 ~ "91–180",
-      dias_desde_vacunacion >= 181 & dias_desde_vacunacion <= 270 ~ "181–270",
-      dias_desde_vacunacion >= 271 & dias_desde_vacunacion <= 365 ~ "271–365",
-      TRUE ~ NA_character_
-    ),
-    bin_tiempo = factor(bin_tiempo, levels = c("0–90", "91–180", "181–270", "271–365"))
+  # Objetivo:
+  #   Estimar la tasa posterior de hospitalizacion en cada grupo temporal y
+  #   compararla contra la tasa posterior del grupo no vacunado.
+  #
+  # Modelo:
+  #   Si en un grupo observamos:
+  #       y = cantidad de hospitalizaciones
+  #       n = cantidad de personas
+  #
+  #   y usamos un prior:
+  #       theta ~ Beta(alpha, beta)
+  #
+  #   entonces, por conjugacion Beta-Binomial:
+  #       theta | y, n ~ Beta(alpha + y, beta + n - y)
+  #
+  # Efectividad vacunal por simulacion:
+  #       VE = 1 - theta_grupo / theta_no_vacunadas
+  #
+  # Priors pedidos por la guia:
+  #   Beta(1,1): peso efectivo alpha + beta = 2 observaciones.
+  #   Beta(2,8): peso efectivo alpha + beta = 10 observaciones,
+  #              centrado en una tasa baja de hospitalizacion.
+  #
+  # Nota sobre "No vacunada":
+  #   Los bins temporales vacunados son solo:
+  #       0-90, 91-180, 181-270, 271-365
+  #   "No vacunada" no es un bin temporal: se conserva como referencia/control.
+  #   Para esa fila, VE se calcula contra si misma y por eso queda en 0.
+
+  set.seed(123)
+
+  N_sim <- 10000
+
+  priors <- tibble::tribble(
+    ~prior,       ~alpha_prior, ~beta_prior, ~peso_efectivo,
+    "Beta(1,1)",             1,           1,              2,
+    "Beta(2,8)",             2,           8,             10
   )
- 
-# Prior Beta(1,1) = uniforme sobre [0,1]
-# Posterior Beta(1 + k, 1 + n - k)
-N_sim <- 50000
- 
-# Conteos de no vacunados (denominador común para todos los bins)
-nv_total <- df %>% filter(vacunada == 0) %>%
-  summarise(hosp = sum(hospitalizada), total = n())
- 
-bins <- levels(df$bin_tiempo)
-tabla_VE_tiempo <- map_dfr(bins, function(b) {
-  # Vacunados en este bin
-  fila_V <- df %>%
-    filter(bin_tiempo == b) %>%
-    summarise(hosp = sum(hospitalizada), total = n())
- 
-  if (fila_V$total == 0) {
-    return(data.frame(bin = b, VE_mediana = NA, HPDI_lo = NA, HPDI_hi = NA,
-                      n_V = 0, n_NV = nv_total$total))
+
+  # Identificamos el grupo no vacunado desde la variable vacunada,
+  # no desde el texto del nivel, para evitar depender del nombre exacto.
+  idx_nv <- df$vacunada == 0
+
+  y_nv <- sum(df$hospitalizada[idx_nv])
+  nv_total <- sum(idx_nv)
+
+  bin_no_vacunada <- unique(as.character(df$bin_tiempo[idx_nv]))
+
+  if (length(bin_no_vacunada) != 1) {
+    stop("Se esperaba un unico nivel de bin_tiempo para las personas no vacunadas.")
   }
- 
-  # Posterior conjugada Beta
-  theta_V_s  <- rbeta(N_sim,
-                      shape1 = 1 + fila_V$hosp,
-                      shape2 = 1 + fila_V$total - fila_V$hosp)
-  theta_NV_s <- rbeta(N_sim,
-                      shape1 = 1 + nv_total$hosp,
-                      shape2 = 1 + nv_total$total - nv_total$hosp)
- 
-  VE_bb <- 1 - theta_V_s / theta_NV_s
-  hp    <- HPDI(VE_bb, prob = 0.95)
- 
-  data.frame(
-    bin        = b,
-    n_V        = fila_V$total,
-    n_NV       = nv_total$total,
-    hosp_V     = fila_V$hosp,
-    hosp_NV    = nv_total$hosp,
-    VE_mediana = median(VE_bb),
-    HPDI_lo    = hp[1],
-    HPDI_hi    = hp[2]
-  )
-})
- 
-print(tabla_VE_tiempo %>%
-        mutate(across(c(VE_mediana, HPDI_lo, HPDI_hi), ~ round(.x * 100, 1))))
- 
-cat("\nObservación esperada: VE alta en 0–90, caída sustantiva en 271–365 (waning).\n")
-cat("Peso efectivo del prior Beta(1,1): 2 observaciones equivalentes por celda.\n")
-cat("Nota: los no vacunados (n =", nv_total$total, ") son el denominador común en todos los bins.\n")
+
+  tabla_VE_tiempo <- purrr::map_dfr(seq_len(nrow(priors)), function(i) {
+    alpha_prior <- priors$alpha_prior[i]
+    beta_prior  <- priors$beta_prior[i]
+
+    purrr::map_dfr(niveles_exposicion_tiempo, function(b) {
+      idx_g <- as.character(df$bin_tiempo) == b
+
+      y_g <- sum(df$hospitalizada[idx_g])
+      n_g <- sum(idx_g)
+
+      # Posterior de la tasa de hospitalizacion del grupo actual.
+      theta_g_s <- rbeta(
+        N_sim,
+        shape1 = alpha_prior + y_g,
+        shape2 = beta_prior + n_g - y_g
+      )
+
+      # Posterior de la tasa de hospitalizacion del grupo no vacunado.
+      #
+      # Si el grupo actual ES "No vacunada", usamos la misma muestra posterior.
+      # Asi VE = 1 - theta_NV / theta_NV = 0 exactamente.
+      # Esto deja esa fila como referencia clara en la tabla.
+      if (b == bin_no_vacunada) {
+        theta_NV_s <- theta_g_s
+      } else {
+        theta_NV_s <- rbeta(
+          N_sim,
+          shape1 = alpha_prior + y_nv,
+          shape2 = beta_prior + nv_total - y_nv
+        )
+      }
+
+      # Efectividad vacunal bayesiana por muestra posterior.
+      #
+      # VE > 0: el grupo tiene menor tasa que no vacunadas.
+      # VE = 0: el grupo tiene tasa igual a no vacunadas.
+      # VE < 0: el grupo tiene mayor tasa que no vacunadas.
+      VE_bb <- 1 - theta_g_s / theta_NV_s
+
+      # HPDI 95% usando la funcion del paquete rethinking.
+      # Su implementacion devuelve un vector con nombres:
+      #   lower, upper
+      hpdi_ve <- HPDI(VE_bb, prob = 0.95)
+
+      tibble::tibble(
+        prior = priors$prior[i],
+        peso_efectivo = priors$peso_efectivo[i],
+        bin_tiempo = b,
+
+        n = n_g,
+        hospitalizadas = y_g,
+        tasa_obs = ifelse(n_g > 0, y_g / n_g, NA_real_),
+        tasa_obs_no_vacunadas = y_nv / nv_total,
+
+        VE_mediana = stats::median(VE_bb),
+        VE_hpdi_inf = as.numeric(hpdi_ve[1]),
+        VE_hpdi_sup = as.numeric(hpdi_ve[2])
+      )
+    })
+  })
+
+  tabla_VE_tiempo
 ```
+
+Estas VE por bin comparan descriptiva y exploratoriamente cada grupo vacunado
+contra personas no vacunadas. No son una estimación causal pura de waning:
+`No vacunada` es la referencia, no un quinto bin temporal.
+
 
 # PASO 4 — Estratificación edad sola y cruce edad × tiempo
 
@@ -553,99 +708,195 @@ df <- df %>%
     grupo_edad = cut(
       edad,
       breaks = c(17, 49, 64, Inf),
-      labels = c("18–49", "50–64", "65+")
+      labels = c("18-49", "50-64", "65+")
     )
   )
 ```
 
-```{r}
-# ---- 4a: Sólo edad (replicar homogeneidad del IICA) ----
+Nota: estos cortes (`18-49`, `50-64`, `65+`) siguen la guía del análisis
+estratificado y son distintos de `edad_cat` (`18-49`, `50-69`, `70+`), que
+pertenece al modelo oficial del Paso 1.
+
+```{r, results='asis', comment=""}
+# ---- 4a: Solo edad (replicar homogeneidad del IICA) ----
 # Para la estratificación por edad, vacunados vs no vacunados DENTRO del mismo
 # grupo de edad es la comparación correcta (los no vacunados de cada grupo
 # son el denominador natural).
 
-cat("--- 4a: VE por grupo de edad (univariado) ---\n")
- 
-grupos_edad <- c("18–49", "50–64", "65+")
- 
+cat("### 4a: VE por grupo de edad\n\n")
+
+grupos_edad <- c("18-49", "50-64", "65+")
+
 tabla_VE_edad <- map_dfr(grupos_edad, function(ge) {
   sub <- df %>% filter(grupo_edad == ge)
- 
+
   fila_V  <- sub %>% filter(vacunada == 1) %>%
     summarise(hosp = sum(hospitalizada), total = n())
   fila_NV <- sub %>% filter(vacunada == 0) %>%
     summarise(hosp = sum(hospitalizada), total = n())
- 
+
   theta_V_s  <- rbeta(N_sim, 1 + fila_V$hosp,  1 + fila_V$total  - fila_V$hosp)
   theta_NV_s <- rbeta(N_sim, 1 + fila_NV$hosp, 1 + fila_NV$total - fila_NV$hosp)
- 
+
   VE_bb <- 1 - theta_V_s / theta_NV_s
-  hp    <- HPDI(VE_bb, prob = 0.95)
- 
+  hp    <- as.numeric(HPDI(VE_bb, prob = 0.95))
+
   data.frame(
     grupo_edad = ge,
     n_V  = fila_V$total, n_NV = fila_NV$total,
-    VE_mediana = median(VE_bb),
+    VE_mediana = as.numeric(median(VE_bb)),
     HPDI_lo = hp[1], HPDI_hi = hp[2]
   )
 })
- 
-print(tabla_VE_edad %>%
-        mutate(across(c(VE_mediana, HPDI_lo, HPDI_hi), ~ round(.x * 100, 1))))
+
+tabla_VE_edad %>%
+  mutate(across(c(VE_mediana, HPDI_lo, HPDI_hi), ~ round(.x * 100, 1))) %>%
+  knitr::kable()
+
+cat("\n\nLa estratificación por edad sola no contradice fuertemente la homogeneidad reportada por el análisis principal: los intervalos son amplios y se superponen. El grupo `18-49` muestra una VE puntual más alta, pero esa lectura es frágil por la baja cantidad de eventos.\n")
 ```
 
-```{r}
+```{r, results='asis', comment=""}
 # ---- 4b: Grilla 3 × 4 edad × tiempo ----
-# Para cada celda (edad, bin_tiempo):
-#   - Vacunados: los de ese grupo de edad en ese bin temporal
-#   - No vacunados: los de ese grupo de edad (denominador por edad,
-#     porque queremos comparar dentro del mismo estrato etario)
-cat("\n--- 4b: Grilla 3 (edad) × 4 (tiempo) ---\n")
- 
+
+cat("### 4b: Diagnóstico crudo antes de la grilla\n\n")
+cat("La edad puede estar asociada al momento de vacunación. Por eso cruzamos edad × tiempo: la comparación por edad sola puede mezclar grupos con composiciones temporales distintas.\n\n")
+cat("Los no vacunados no tienen tiempo desde vacunación: se usan como referencia basal dentro de cada grupo etario, no como quinto bin temporal.\n\n")
+
+diagnostico_vacunados_edad_tiempo <- df %>%
+  filter(vacunada == 1) %>%
+  count(grupo_edad, bin_tiempo, name = "n_V") %>%
+  tidyr::complete(
+    grupo_edad = factor(grupos_edad, levels = grupos_edad),
+    bin_tiempo = factor(bins_vacunados, levels = bins_vacunados),
+    fill = list(n_V = 0)
+  ) %>%
+  left_join(
+    df %>%
+      filter(vacunada == 1) %>%
+      group_by(grupo_edad, bin_tiempo) %>%
+      summarise(hosp_V = sum(hospitalizada), .groups = "drop"),
+    by = c("grupo_edad", "bin_tiempo")
+  ) %>%
+  mutate(
+    hosp_V = replace_na(hosp_V, 0),
+    riesgo_obs_V = ifelse(n_V > 0, round(100 * hosp_V / n_V, 2), NA_real_)
+  )
+
+cat("Vacunados por grupo de edad × bin temporal: conteos, eventos y proporciones observadas de hospitalización.\n\n")
+
+diagnostico_vacunados_edad_tiempo %>%
+  pivot_wider(
+    id_cols = grupo_edad,
+    names_from = bin_tiempo,
+    values_from = c(n_V, hosp_V, riesgo_obs_V),
+    values_fill = list(n_V = 0, hosp_V = 0)
+  ) %>%
+  knitr::kable()
+
+cat("\n\nHospitalizaciones entre no vacunados por grupo de edad, usadas como referencia basal dentro de cada grupo etario.\n\n")
+
+df %>%
+  filter(vacunada == 0) %>%
+  group_by(grupo_edad) %>%
+  summarise(hosp = sum(hospitalizada), total = n(),
+            riesgo_obs = round(100 * hosp / total, 2), .groups = "drop") %>%
+  knitr::kable()
+```
+
+```{r, results='asis', comment=""}
+# ---- Grilla propiamente dicha ----
+# Denominador correcto: no vacunados del MISMO grupo de edad.
+# El riesgo/proporción observado en no vacunados se repite como referencia
+# basal por edad en los cuatro bins de vacunados.
+# Esto es una limitación del diseño Beta-Binomial simple: idealmente se
+# usarían tasas persona-tiempo, pero con los datos disponibles es la mejor
+# aproximación posible para este ejercicio didáctico.
+
+cat("### Grilla 3 × 4 edad × tiempo\n\n")
+cat("La referencia no vacunada (`n_NV`, `hosp_NV` y su proporción observada) es basal por edad y se repite para los cuatro bins temporales de vacunados.\n\n")
+cat("Como apoyo interpretativo, marcamos celdas inestables cuando `n_V == 0 | hosp_V < 3 | n_V < 30 | (HPDI_hi - HPDI_lo) > 0.75`.\n\n")
+
 tabla_cruce <- map_dfr(grupos_edad, function(ge) {
   nv_edad <- df %>%
     filter(grupo_edad == ge, vacunada == 0) %>%
     summarise(hosp = sum(hospitalizada), total = n())
- 
-  map_dfr(bins, function(b) {
+
+  map_dfr(bins_vacunados, function(b) {
     fila_V <- df %>%
-      filter(grupo_edad == ge, bin_tiempo == b) %>%
+      filter(grupo_edad == ge, vacunada == 1, bin_tiempo == b) %>%
       summarise(hosp = sum(hospitalizada), total = n())
- 
+
     if (fila_V$total == 0 | nv_edad$total == 0) {
       return(data.frame(grupo_edad = ge, bin = b,
                         n_V = fila_V$total, n_NV = nv_edad$total,
-                        VE_mediana = NA, HPDI_lo = NA, HPDI_hi = NA))
+                        hosp_V = fila_V$hosp, hosp_NV = nv_edad$hosp,
+                        VE_mediana = NA_real_, HPDI_lo = NA_real_, HPDI_hi = NA_real_,
+                        celda_inestable = TRUE,
+                        motivo_inestabilidad = "n_V = 0"))
     }
- 
+
     theta_V_s  <- rbeta(N_sim, 1 + fila_V$hosp,  1 + fila_V$total  - fila_V$hosp)
     theta_NV_s <- rbeta(N_sim, 1 + nv_edad$hosp, 1 + nv_edad$total - nv_edad$hosp)
- 
+
     VE_bb <- 1 - theta_V_s / theta_NV_s
-    hp    <- HPDI(VE_bb, prob = 0.95)
- 
+    hp    <- as.numeric(HPDI(VE_bb, prob = 0.95))
+
+    celda_inestable <- fila_V$total == 0 |
+      fila_V$hosp < 3 |
+      fila_V$total < 30 |
+      (hp[2] - hp[1]) > 0.75
+
+    motivos <- c(
+      if (fila_V$total == 0) "n_V = 0",
+      if (fila_V$hosp < 3) "hosp_V < 3",
+      if (fila_V$total < 30) "n_V < 30",
+      if ((hp[2] - hp[1]) > 0.75) "HPDI ancho"
+    )
+
     data.frame(
       grupo_edad = ge, bin = b,
       n_V  = fila_V$total, n_NV = nv_edad$total,
-      VE_mediana = median(VE_bb),
-      HPDI_lo = hp[1], HPDI_hi = hp[2]
+      hosp_V = fila_V$hosp, hosp_NV = nv_edad$hosp,
+      VE_mediana = as.numeric(median(VE_bb)),
+      HPDI_lo = hp[1], HPDI_hi = hp[2],
+      celda_inestable = celda_inestable,
+      motivo_inestabilidad = ifelse(celda_inestable, paste(motivos, collapse = "; "), "ok")
     )
   })
 })
- 
-print(tabla_cruce %>%
-        mutate(across(c(VE_mediana, HPDI_lo, HPDI_hi), ~ round(.x * 100, 1))))
+
+stopifnot(nrow(tabla_cruce) == 12)
+
+cat("Grilla con conteos crudos, proporciones observadas y VE bayesiana.\n\n")
+
+tabla_cruce %>%
+  mutate(
+    riesgo_obs_V  = ifelse(n_V  > 0, round(100 * hosp_V  / n_V,  2), NA_real_),
+    riesgo_obs_NV = ifelse(n_NV > 0, round(100 * hosp_NV / n_NV, 2), NA_real_),
+    across(c(VE_mediana, HPDI_lo, HPDI_hi),
+           ~ ifelse(is.na(.x), NA_real_, round(.x * 100, 1))),
+    nota = ifelse(celda_inestable,
+                  paste("inestable:", motivo_inestabilidad),
+                  "ok")
+  ) %>%
+  knitr::kable()
 ```
 
-```{r}
+
+```{r, results='asis', comment=""}
 # Diagnóstico de Simpson invertida
-cat("\nDiagnóstico Simpson invertida:\n")
-cat("Si los adultos mayores (65+) se vacunaron sistemáticamente antes,\n")
-cat("están sobre-representados en bins tardíos (donde VE es menor).\n")
-cat("Esto haría que el agregado por edad mezcle tiempo y edad, generando\n")
-cat("falsa HOMOGENEIDAD: la VE baja en 65+ no es diferencia etaria sino temporal.\n")
-cat("=> Distribución de días desde vacunación por grupo de edad:\n")
- 
+
+cat("### Diagnóstico de Simpson invertida\n\n")
+
+cat("Los grupos etarios tienen distinta distribución de tiempo desde vacunación. En los vacunados, `18-49` no tiene observaciones en `271-365`, mientras que `50-64` y `65+` concentran cerca de un tercio de sus vacunados en el bin tardío.\n\n")
+
+cat("El patrón sugiere mezcla edad-tiempo/calendario: los adultos mayores parecen más representados en períodos más alejados de la vacunación, y una comparación agregada por edad puede mezclar riesgo basal etario con tiempo desde vacunación.\n\n")
+
+cat("Esto no alcanza para afirmar una Simpson invertida estricta. Seis de las doce celdas de la grilla son inestables (`18-49 × 0-90`, `18-49 × 91-180`, `18-49 × 181-270`, `18-49 × 271-365`, `50-64 × 0-90`, `65+ × 0-90`), por lo que la lectura debe quedar como evidencia exploratoria de composición edad-tiempo/calendario, no como demostración causal cerrada.\n\n")
+
+cat("Distribución de días desde vacunación por grupo de edad:\n\n")
+
 df %>%
   filter(vacunada == 1) %>%
   group_by(grupo_edad) %>%
@@ -654,7 +905,539 @@ df %>%
     dias_media   = mean(dias_desde_vacunacion),
     prop_tardio  = mean(dias_desde_vacunacion > 270)
   ) %>%
-  print()
+  knitr::kable()
 ```
 
-#Limitación: no tenemos fecha de hospitalización para no vacunados.
+**Limitación**: no tenemos fecha de hospitalización para no vacunados. Por eso no podemos construir controles no vacunados alineados por calendario o por bin temporal; las comparaciones no separan causalmente waning de composición por edad, tiempo desde vacunación y calendario.
+
+# PASO 5 — DAG causal
+
+```{r, results='asis', comment=""}
+dag_velmyra <- dagitty('dag {
+    U [unobserved]
+    V  -> Y
+    V  -> T
+    T  -> Y
+    U  -> V
+    U  -> Y
+    edad        -> V
+    edad        -> T
+    edad        -> Y
+    sexo        -> V
+    sexo        -> Y
+    comorbilidad -> V
+    comorbilidad -> Y
+    centro      -> V
+    centro      -> Y
+  }')
+
+# Coordenadas para el layout del grafo
+coordinates(dag_velmyra) <- list(
+  x = c(V = 0, T = 2, Y = 4, U = 2,
+          edad = 0, sexo = 1, comorbilidad = 3, centro = 4),
+  y = c(V = 0, T = -0.8, Y = 0, U = 2,
+          edad = -2, sexo = -2, comorbilidad = -2, centro = -2)
+)
+
+# Gráfico base con dagitty
+plot(dag_velmyra)
+
+cat("\n\nConjuntos de ajuste identificados por `dagitty` para `V -> Y`:\n\n")
+tabla_ajustes <- tibble::tibble(
+  salida = capture.output(adjustmentSets(dag_velmyra, exposure = "V", outcome = "Y"))
+)
+knitr::kable(tabla_ajustes, col.names = "Resultado")
+
+cat("\n\nInterpretación: `No vacunada` corresponde a `V = 0` en este DAG; no es un nodo causal nuevo. `T` representa `dias_desde_vacunacion`, una variable temporal medida y derivada de la vacunación. Por eso aparece como descendiente de `V`, relevante para waning y composición calendario-tiempo, pero no se ajusta como confusor basal del efecto binario de vacunarse.\n\n")
+cat("La flecha `edad -> T` representa priorización y calendario de vacunación por edad: distintos grupos etarios pueden quedar con distribuciones diferentes de días desde vacunación.\n\n")
+cat("`U` (`estado de salud previo / sesgo del vacunado sano`) abre un camino de puerta trasera `V <- U -> Y`. Como `U` no está observado, edad, sexo, comorbilidad y centro no cierran completamente ese camino; el ajuste medido reduce confusión observable, pero no identifica por completo el sesgo residual.\n\n")
+cat("Dirección del sesgo: si `U` mejora la salud basal y también aumenta la probabilidad de vacunarse, el sesgo infla la VE observada. El modelo oficial ajusta por edad, sexo, comorbilidad y centro; el `quap` simplificado usa `edad_cat`, sexo y comorbilidad. En ambos casos, `U` residual justifica la sensibilidad del Paso 6.\n\n")
+cat("Paso 6 cuantifica el impacto sobre el contraste vacunados vs no vacunados.\n")
+```
+
+# PASO 6 — Sensibilidad a confusor no medido (vía paramétrica bayesiana)
+
+```{r, results='asis', comment=""}
+# β_causal = β_observado - δ
+# δ ~ N(mu_delta, sigma_delta²)
+# Por composición gaussiana:
+#   β_causal ~ N(β_obs - mu_delta, sigma_V² + sigma_delta²)
+# Con esta parametrización, δ < 0 representa sesgo del vacunado sano:
+# β_obs queda más negativo/protector y β_causal = β_obs - δ vuelve el efecto
+# menos protector.
+
+beta_obs   <- as.numeric(coef(modelo_quap_debil)["bV"])
+sigma_V    <- as.numeric(sqrt(vcov(modelo_quap_debil)["bV", "bV"]))
+OR_obs_val <- as.numeric(exp(coef(modelo_quap_debil)["bV"]))
+
+# Tres priors sobre δ (cuánto sesga U al coeficiente de la vacuna)
+# Sesgo del vacunado sano -> δ < 0 (infla la protección observada).
+
+priors_delta <- list(
+  debil    = list(mu = -0.10, sd = 0.10, label = "Débil    (σ=0.10): confusor pequeño"),
+  moderado = list(mu = -0.20, sd = 0.20, label = "Moderado (σ=0.20): confusor moderado"),
+  agresivo = list(mu = -0.40, sd = 0.30, label = "Agresivo (σ=0.30): sesgo vacunado sano fuerte")
+)
+
+cat(sprintf("`beta_observado` (MAP): %.3f\n\n", beta_obs))
+cat(sprintf("Sigma posterior: %.3f\n\n", sigma_V))
+cat("Contraste afectado por `U`: vacunados vs no vacunados.\n\n")
+cat("Este es un análisis de desplazamiento en escala log-OR: `beta_causal = beta_obs - delta`. No modela explícitamente la prevalencia de `U` ni su fuerza de asociación con `V` e `Y`.\n\n")
+
+tabla_priors_delta <- tibble::tibble(
+  escenario = names(priors_delta),
+  mu_delta = purrr::map_dbl(priors_delta, "mu"),
+  sd_delta = purrr::map_dbl(priors_delta, "sd"),
+  exp_mu_delta = exp(mu_delta)
+)
+
+cat("Priors usados para `delta` e interpretación como factor multiplicativo `exp(mu_delta)` sobre el OR observado:\n\n")
+tabla_priors_delta %>%
+  mutate(
+    mu_delta = round(mu_delta, 2),
+    sd_delta = round(sd_delta, 2),
+    exp_mu_delta = round(exp_mu_delta, 2)
+  ) %>%
+  knitr::kable()
+
+resultados_sens <- map_dfr(names(priors_delta), function(nm) {
+  pd <- priors_delta[[nm]]
+
+  # Muestrear β_causal por composición gaussiana:
+  # β_causal = β_obs_s - δ_s, donde β_obs_s ~ posterior quap y δ_s ~ prior del sesgo
+
+  beta_obs_s     <- samp_debil$bV                      # muestras de la posterior quap
+  delta_s        <- rnorm(N_samp, pd$mu, pd$sd)
+  beta_causal_s  <- beta_obs_s - delta_s
+  VE_causal_s    <- 1 - exp(beta_causal_s)
+
+  hp <- as.numeric(HPDI(VE_causal_s, prob = 0.95))
+
+  data.frame(
+    prior    = nm,
+    label    = pd$label,
+    mu_delta = pd$mu,
+    sd_delta = pd$sd,
+    VE_mediana = as.numeric(median(VE_causal_s)),
+    HPDI_lo    = hp[1],
+    HPDI_hi    = hp[2]
+  )
+})
+
+cat("\n\nVE ajustada por sensibilidad bajo estos priors:\n\n")
+resultados_sens %>%
+  mutate(across(c(VE_mediana, HPDI_lo, HPDI_hi), ~ round(.x * 100, 1))) %>%
+  dplyr::select(label, VE_mediana, HPDI_lo, HPDI_hi) %>%
+  knitr::kable()
+
+cat("\n\nNota: incluso bajo el prior agresivo, que representa un sesgo del vacunado sano fuerte, la VE ajustada por sensibilidad permanece positiva para vacunados vs no vacunados bajo estos supuestos.\n")
+```
+
+```{r, results='asis', comment=""}
+# ---- E-value (Apéndice B, opcional) ----
+
+cat("### E-value (complemento epidemiológico, Apéndice B)\n\n")
+evalue <- (1 / OR_obs_val) + sqrt((1 / OR_obs_val) * (1 / OR_obs_val - 1))
+cat(sprintf("OR observado = %.3f; E-value = %.2f.\n\n", OR_obs_val, evalue))
+cat(sprintf("Interpretación: se necesitaría un `U` con RR >= %.2f para ambas relaciones (`U -> V` y `U -> Y`) para explicar el efecto observado como espurio, bajo los supuestos del E-value. Como el evento es infrecuente, usamos el OR como aproximación al RR.\n\n", evalue))
+cat("Esto indica que haría falta confusión fuerte para explicar el efecto observado bajo esos supuestos; no es evidencia de que esa confusión fuerte exista. El E-value es un complemento: no reemplaza la sensibilidad bayesiana anterior.\n")
+```
+
+# PASO 7 — Comparación de modelos con WAIC (rethinking::WAIC)
+
+```{r, results='asis', comment=""}
+# M1: modelo bayesiano simplificado del paso 2 (modelo_quap_debil):
+#     vacunada + edad_cat dummies + sexo + comorbilidad, sin centro.
+# M2: factor temporal único con cinco niveles:
+#     No vacunada, 0-90, 91-180, 181-270, 271-365.
+# "No vacunada" es la referencia conceptual. Los cuatro niveles restantes se
+# codifican como indicadores categóricos, no como puntaje ordinal. M2 reemplaza
+# vacunada por el factor temporal y mantiene las mismas covariables restantes.
+
+bin_tiempo_m2 <- factor(df$bin_tiempo, levels = niveles_exposicion_tiempo)
+bin_tiempo_idx_m2 <- as.integer(bin_tiempo_m2)
+
+tabla_niveles_m2 <- tibble::tibble(
+  indice = seq_along(niveles_exposicion_tiempo),
+  bin_tiempo = niveles_exposicion_tiempo
+)
+
+cat("Codificación del factor temporal de M2:\n\n")
+knitr::kable(tabla_niveles_m2)
+
+stopifnot(identical(levels(bin_tiempo_m2), niveles_exposicion_tiempo))
+
+dat_m2 <- list(
+  hospitalizada = as.integer(df$hospitalizada),
+  nivel_0_90    = as.integer(bin_tiempo_idx_m2 == match("0-90", niveles_exposicion_tiempo)),
+  nivel_91_180  = as.integer(bin_tiempo_idx_m2 == match("91-180", niveles_exposicion_tiempo)),
+  nivel_181_270 = as.integer(bin_tiempo_idx_m2 == match("181-270", niveles_exposicion_tiempo)),
+  nivel_271_365 = as.integer(bin_tiempo_idx_m2 == match("271-365", niveles_exposicion_tiempo)),
+  edad_50_69    = dat$edad_50_69,
+  edad_70_plus  = dat$edad_70_plus,
+  sexo          = dat$sexo,
+  comorbilidad  = dat$comorbilidad
+)
+
+modelo_quap_m2 <- quap(
+  alist(
+    hospitalizada ~ dbinom(1, p),
+    logit(p) <- a +
+      bT_0_90    * nivel_0_90 +
+      bT_91_180  * nivel_91_180 +
+      bT_181_270 * nivel_181_270 +
+      bT_271_365 * nivel_271_365 +
+      bE50 * edad_50_69 +
+      bE70 * edad_70_plus +
+      bS * sexo +
+      bCom * comorbilidad,
+    a ~ dnorm(0, 2.5),
+    bT_0_90    ~ dnorm(0, 2.5),
+    bT_91_180  ~ dnorm(0, 2.5),
+    bT_181_270 ~ dnorm(0, 2.5),
+    bT_271_365 ~ dnorm(0, 2.5),
+    bE50 ~ dnorm(0, 2.5),
+    bE70 ~ dnorm(0, 2.5),
+    bS ~ dnorm(0, 2.5),
+    bCom ~ dnorm(0, 2.5)
+  ),
+  data = dat_m2
+)
+
+# rethinking::WAIC calcula automáticamente lppd, pWAIC y SE
+
+set.seed(777)
+waic_M1 <- rethinking::WAIC(modelo_quap_debil, n = N_samp)
+waic_M2 <- rethinking::WAIC(modelo_quap_m2,    n = N_samp)
+
+tabla_waic <- function(x) {
+  if (is.atomic(x) && !is.null(names(x))) {
+    return(tibble::tibble(metrica = names(x), valor = as.numeric(x)))
+  }
+
+  if (is.list(x) && !is.null(names(x))) {
+    vals <- x[vapply(x, function(z) length(z) == 1 && is.numeric(z), logical(1))]
+    if (length(vals) > 0) {
+      return(tibble::tibble(metrica = names(vals), valor = as.numeric(unlist(vals))))
+    }
+  }
+
+  tibble::tibble(resultado = capture.output(print(x)))
+}
+
+cat("\n\nM1 (agregado):\n\n")
+tabla_waic(waic_M1) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
+  knitr::kable()
+
+cat("M2 (niveles temporales):\n\n")
+tabla_waic(waic_M2) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
+  knitr::kable()
+
+# Comparación directa con rethinking::compare
+
+set.seed(777)
+comp <- rethinking::compare(modelo_quap_debil, modelo_quap_m2)
+cat("Comparación de modelos:\n\n")
+tabla_comp <- tryCatch({
+  comp_df <- as.data.frame(as.matrix(comp))
+  comp_df$modelo <- rownames(comp_df)
+  comp_df %>% dplyr::relocate(modelo)
+}, error = function(e) {
+  tibble::tibble(resultado = capture.output(print(comp)))
+})
+
+tabla_comp %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
+  knitr::kable()
+
+cat("Interpretación: M1 tiene menor WAIC en este render, pero la diferencia es pequeña/moderada y no decide causalidad. WAIC no descarta heterogeneidad temporal ni edad-tiempo; esa lectura queda en Pasos 3 y 4.\n\n")
+cat("WAIC evalúa desempeño predictivo comparado entre M1 (`vacunada`) y M2 (factor temporal único). No valida ni refuta la grilla edad × tiempo del Paso 4.\n")
+```
+
+# Respuestas operativas a las dos quejas
+
+```{r, echo=FALSE, results='asis', comment=""}
+# ---- Queja 1: "Me vacuné hace 14 meses, me hospitalicé igual" ----
+
+cat("## Queja 1: vacunación hace aproximadamente 14 meses\n\n")
+cat("Catorce meses queda fuera del soporte directo del dataset: el seguimiento observado llega hasta 365 días. Por eso `271-365` no estima directamente 14 meses; se usa como el bin tardío observado más cercano.\n\n")
+
+queja1 <- tabla_VE_tiempo %>%
+  filter(bin_tiempo == "271-365", prior == "Beta(1,1)")
+
+queja1_sens <- tabla_VE_tiempo %>%
+  filter(bin_tiempo == "271-365", prior == "Beta(2,8)")
+
+queja1_pico <- tabla_VE_tiempo %>%
+  filter(bin_tiempo == "0-90", prior == "Beta(1,1)")
+
+set.seed(881)
+n_post_q1 <- N_sim
+
+conteo_bin_q1 <- function(bin_objetivo) {
+  df %>%
+    filter(bin_tiempo == bin_objetivo) %>%
+    summarise(hosp = sum(hospitalizada), total = n())
+}
+
+conteo_pico_q1   <- conteo_bin_q1("0-90")
+conteo_tardio_q1 <- conteo_bin_q1("271-365")
+conteo_nv_q1 <- df %>%
+  filter(vacunada == 0) %>%
+  summarise(hosp = sum(hospitalizada), total = n())
+
+theta_pico_q1 <- rbeta(
+  n_post_q1,
+  1 + conteo_pico_q1$hosp,
+  1 + conteo_pico_q1$total - conteo_pico_q1$hosp
+)
+theta_tardio_q1 <- rbeta(
+  n_post_q1,
+  1 + conteo_tardio_q1$hosp,
+  1 + conteo_tardio_q1$total - conteo_tardio_q1$hosp
+)
+theta_nv_q1 <- rbeta(
+  n_post_q1,
+  1 + conteo_nv_q1$hosp,
+  1 + conteo_nv_q1$total - conteo_nv_q1$hosp
+)
+
+VE_pico_q1   <- 1 - theta_pico_q1 / theta_nv_q1
+VE_tardio_q1 <- 1 - theta_tardio_q1 / theta_nv_q1
+
+prob_tardio_menor_pico <- mean(VE_tardio_q1 < VE_pico_q1)
+prob_tardio_protectora <- mean(VE_tardio_q1 > 0)
+
+if (nrow(queja1) > 0 && !is.na(queja1$VE_mediana)) {
+  cat(sprintf(
+    "**Bin tardío observado, 271-365 días (Beta(1,1))**: VE mediana = %.1f%%, HPDI 95%% = [%.1f%%, %.1f%%].\n\n",
+    100 * queja1$VE_mediana,
+    100 * queja1$VE_hpdi_inf,
+    100 * queja1$VE_hpdi_sup
+  ))
+} else {
+  cat("Datos insuficientes en bin 271-365 — verificar CSV.\n")
+}
+
+if (nrow(queja1_sens) > 0 && !is.na(queja1_sens$VE_mediana)) {
+  cat(sprintf(
+    "**Sensibilidad Beta(2,8), 271-365 días**: VE mediana = %.1f%%, HPDI 95%% = [%.1f%%, %.1f%%].\n\n",
+    100 * queja1_sens$VE_mediana,
+    100 * queja1_sens$VE_hpdi_inf,
+    100 * queja1_sens$VE_hpdi_sup
+  ))
+}
+
+if (nrow(queja1_pico) > 0 && !is.na(queja1_pico$VE_mediana)) {
+  cat(sprintf(
+    "**Bin pico observado, 0-90 días (Beta(1,1))**: VE mediana = %.1f%%, HPDI 95%% = [%.1f%%, %.1f%%].\n\n",
+    100 * queja1_pico$VE_mediana,
+    100 * queja1_pico$VE_hpdi_inf,
+    100 * queja1_pico$VE_hpdi_sup
+  ))
+}
+
+cat(sprintf(
+  "**Lectura bayesiana**: bajo este modelo, `P(VE_271-365 < VE_0-90 | datos) = %.1f%%` y `P(VE_271-365 > 0 | datos) = %.1f%%`. Esto no prueba causalmente waning, pero sí sostiene la conjetura de protección atenuada con riesgo residual.\n\n",
+  100 * prob_tardio_menor_pico,
+  100 * prob_tardio_protectora
+))
+
+cat("**Respuesta operativa a la Defensoría**: la hospitalización 14 meses después de vacunarse es compatible con el riesgo residual esperado si la protección cae respecto del pico. No implica que la vacuna no haya funcionado. El reanálisis justifica evaluar un refuerzo alrededor de los 12 meses como hipótesis operativa para las autoridades sanitarias, no como una indicación clínica individual cerrada.\n")
+```
+
+```{r, echo=FALSE, results='asis', comment=""}
+# ---- Queja 2: "Mi madre tiene 72 años, vacunada hace 9 meses" ----
+
+cat("## Queja 2: paciente de 72 años, vacunada hace aproximadamente 9 meses\n\n")
+cat("Una edad de 72 años cae en `65+`; nueve meses cae dentro del bin `181-270` días. La respuesta usa esa celda edad × tiempo, comparada contra no vacunadas del mismo grupo etario.\n\n")
+
+queja2 <- tabla_cruce %>%
+  filter(grupo_edad == "65+", bin == "181-270")
+
+set.seed(882)
+n_post_q2 <- N_sim
+
+conteo_q2_v <- df %>%
+  filter(grupo_edad == "65+", vacunada == 1, bin_tiempo == "181-270") %>%
+  summarise(hosp = sum(hospitalizada), total = n())
+
+conteo_q2_nv <- df %>%
+  filter(grupo_edad == "65+", vacunada == 0) %>%
+  summarise(hosp = sum(hospitalizada), total = n())
+
+theta_q2_v <- rbeta(
+  n_post_q2,
+  1 + conteo_q2_v$hosp,
+  1 + conteo_q2_v$total - conteo_q2_v$hosp
+)
+theta_q2_nv <- rbeta(
+  n_post_q2,
+  1 + conteo_q2_nv$hosp,
+  1 + conteo_q2_nv$total - conteo_q2_nv$hosp
+)
+
+VE_q2 <- 1 - theta_q2_v / theta_q2_nv
+prob_q2_protectora <- mean(VE_q2 > 0)
+prob_q2_mayor_50 <- mean(VE_q2 > 0.50)
+
+if (nrow(queja2) > 0 && !is.na(queja2$VE_mediana)) {
+  cat(sprintf(
+    "**Celda `65+` y `181-270` días**: mediana = %.1f%%, HPDI 95%% = [%.1f%%, %.1f%%].\n\n",
+    100 * queja2$VE_mediana,
+    100 * queja2$HPDI_lo,
+    100 * queja2$HPDI_hi
+  ))
+} else {
+  cat("Celda (65+, 181-270) vacía o sin datos — verificar CSV.\n")
+}
+
+cat(sprintf(
+  "**Lectura bayesiana**: bajo este modelo, `P(VE > 0 | datos) = %.1f%%` y `P(VE > 50%% | datos) = %.1f%%` para la celda `65+ × 181-270`. La evidencia posterior favorece protección sostenida en esa celda, con la incertidumbre cuantificada por el HPDI.\n\n",
+  100 * prob_q2_protectora,
+  100 * prob_q2_mayor_50
+))
+
+cat("**Respuesta operativa a la Defensoría**: para una paciente de 72 años vacunada hace 9 meses, el reanálisis no sugiere pérdida clara de protección en su celda; sugiere protección probablemente sostenida, aunque no absoluta. Si en una actualización futura la celda `65+ × 181-270` mostrara caída marcada o HPDI compatible con protección baja/nula, entonces el refuerzo pasaría a ser la recomendación operativa natural. Con este marco, la conjetura objetiva es mantener vigilancia y considerar refuerzo por política general de duración, no porque esta celda muestre fracaso.\n")
+```
+
+# Visualizaciones
+
+```{r}
+# ---- Figura 1: VE por tiempo con ambos priors ----
+
+tabla_VE_tiempo %>%
+    dplyr::filter(bin_tiempo != "No vacunada") %>%
+    dplyr::mutate(
+      bin_tiempo = factor(
+        bin_tiempo,
+        levels = bins_vacunados
+      )
+    ) %>%
+    ggplot2::ggplot(
+      ggplot2::aes(
+        x = bin_tiempo,
+        y = VE_mediana,
+        color = prior,
+        group = prior
+      )
+    ) +
+    ggplot2::geom_point(
+      size = 3,
+      position = ggplot2::position_dodge(width = 0.35)
+    ) +
+    ggplot2::geom_errorbar(
+      ggplot2::aes(ymin = VE_hpdi_inf, ymax = VE_hpdi_sup),
+      width = 0.18,
+      linewidth = 0.8,
+      position = ggplot2::position_dodge(width = 0.35)
+    ) +
+    ggplot2::geom_hline(
+      yintercept = VE_freq,
+      linetype = "dashed",
+      color = "firebrick"
+    ) +
+    ggplot2::scale_y_continuous(
+      labels = scales::percent,
+      limits = c(0, 1)
+    ) +
+    ggplot2::scale_color_manual(
+      values = c(
+        "Beta(1,1)" = "steelblue",
+        "Beta(2,8)" = "darkorange3"
+      )
+    ) +
+    ggplot2::labs(
+      title = "Figura 1: efectividad Velmyra por per\u00edodo desde vacunaci\u00f3n",
+      subtitle = "Mediana y HPDI 95% - Beta-Binomial conjugada",
+      x = "D\u00edas desde vacunaci\u00f3n",
+      y = "Efectividad (VE)",
+      color = "Prior"
+    ) +
+    ggplot2::theme_minimal()
+```
+
+```{r}
+# ---- Figura auxiliar: VE por bin temporal solo con Beta(1,1) ----
+
+tabla_VE_tiempo %>%
+  filter(prior == "Beta(1,1)", bin_tiempo != "No vacunada") %>%
+  mutate(bin_tiempo = factor(bin_tiempo, levels = bins_vacunados)) %>%
+  ggplot(aes(x = bin_tiempo, y = VE_mediana)) +
+  geom_point(size = 3, color = "steelblue") +
+  geom_errorbar(aes(ymin = VE_hpdi_inf, ymax = VE_hpdi_sup), width = 0.2, color = "steelblue") +
+  geom_hline(yintercept = VE_freq, linetype = "dashed", color = "firebrick") +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  labs(title = "Figura auxiliar: efectividad Velmyra por per\u00edodo desde vacunaci\u00f3n",
+       subtitle = "Solo prior Beta(1,1); la figura principal compara ambos priors",
+       x = "D\u00edas desde vacunaci\u00f3n", y = "Efectividad (VE)") +
+  theme_minimal()
+```
+
+
+
+```{r}
+# ---- Figura 2: Grilla edad × tiempo ----
+
+tabla_cruce %>%
+  mutate(
+    bin    = factor(bin, levels = bins_vacunados),
+    etiq   = case_when(
+      is.na(VE_mediana) ~ "sin datos",
+      TRUE ~ sprintf("%.0f%%\n[%.0f, %.0f]%s",
+                     100 * VE_mediana, 100 * HPDI_lo, 100 * HPDI_hi,
+                     ifelse(celda_inestable, "\ninestable", ""))
+    )
+  ) %>%
+  ggplot(aes(x = bin, y = grupo_edad, fill = VE_mediana)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = etiq), size = 3) +
+  scale_fill_gradient2(low = "firebrick", mid = "white", high = "steelblue",
+                       midpoint = 0.5, na.value = "gray90",
+                       labels = scales::percent) +
+  labs(title = "Figura 2: grilla VE - Edad \u00d7 Tiempo (Beta-Binomial)",
+       subtitle = "Celdas = mediana VE | texto = HPDI 95%",
+       x = "D\u00edas desde vacunaci\u00f3n", y = "Grupo de edad", fill = "VE mediana") +
+  theme_minimal()
+```
+
+```{r}
+# ---- Figura 3: Sensibilidad al confusor (débil → moderado → agresivo) ----
+
+resultados_sens %>%
+  mutate(prior = factor(prior, levels = c("debil", "moderado", "agresivo"),
+                        labels = c("D\u00e9bil", "Moderado", "Agresivo"))) %>%
+  ggplot(aes(x = prior, y = VE_mediana, color = prior)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = HPDI_lo, ymax = HPDI_hi), width = 0.2) +
+  geom_hline(yintercept = VE_freq, linetype = "dashed", color = "gray40") +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  scale_color_manual(values = c("steelblue", "orange", "firebrick")) +
+  labs(title = "Figura 3: sensibilidad de VE a confusor no medido",
+       subtitle = "\u03b2_causal = \u03b2_obs \u2212 \u03b4 | tres priors sobre \u03b4",
+       x = "Prior sobre sesgo (\u03b4)", y = "VE causal (mediana + HPDI 95%)") +
+  theme_minimal() + theme(legend.position = "none")
+```
+
+# Discusión ética y límites del reanálisis
+
+El reanálisis no invalida el estudio original. Sí muestra que el estudio es
+perfectible y que algunas conclusiones deben comunicarse con más cautela.
+
+Límites concretos:
+
+- La confusión no medida puede desplazar el efecto observado; el Paso 6 muestra
+  sensibilidad, pero no identifica completamente ese sesgo.
+- Falta información de persona-tiempo y calendario, por lo que las comparaciones
+  por tiempo desde vacunación son descriptivas y exploratorias.
+- El soporte directo de los datos llega hasta 365 días; no corresponde extrapolar
+  automáticamente a 14 meses.
+- Algunas celdas edad x tiempo tienen pocos datos o `n_V = 0`, por lo que sus
+  medianas e intervalos deben tratarse como inestables.
+
+La comunicación responsable evita dos errores: prometer protección individual
+absoluta y convertir un análisis exploratorio en una recomendación clínica
+directa. La lectura adecuada es poblacional, probabilística y condicionada por
+las limitaciones del diseño observacional.
