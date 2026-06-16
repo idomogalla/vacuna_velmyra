@@ -1305,120 +1305,208 @@ cat("**Respuesta operativa a la Defensoría**: para una paciente de 72 años vac
 
 # Visualizaciones
 
-```{r}
-# ---- Figura 1: VE por tiempo con ambos priors ----
+```{r, echo=FALSE}
+# Figuras exportadas para la versión oral de 8 slides.
 
-tabla_VE_tiempo %>%
-    dplyr::filter(bin_tiempo != "No vacunada") %>%
-    dplyr::mutate(
-      bin_tiempo = factor(
-        bin_tiempo,
-        levels = bins_vacunados
-      )
-    ) %>%
-    ggplot2::ggplot(
-      ggplot2::aes(
-        x = bin_tiempo,
-        y = VE_mediana,
-        color = prior,
-        group = prior
-      )
-    ) +
-    ggplot2::geom_point(
-      size = 3,
-      position = ggplot2::position_dodge(width = 0.35)
-    ) +
-    ggplot2::geom_errorbar(
-      ggplot2::aes(ymin = VE_hpdi_inf, ymax = VE_hpdi_sup),
-      width = 0.18,
-      linewidth = 0.8,
-      position = ggplot2::position_dodge(width = 0.35)
-    ) +
-    ggplot2::geom_hline(
-      yintercept = VE_freq,
-      linetype = "dashed",
-      color = "firebrick"
-    ) +
-    ggplot2::scale_y_continuous(
-      labels = scales::percent,
-      limits = c(0, 1)
-    ) +
-    ggplot2::scale_color_manual(
-      values = c(
-        "Beta(1,1)" = "steelblue",
-        "Beta(2,8)" = "darkorange3"
-      )
-    ) +
-    ggplot2::labs(
-      title = "Figura 1: efectividad Velmyra por per\u00edodo desde vacunaci\u00f3n",
-      subtitle = "Mediana y HPDI 95% - Beta-Binomial conjugada",
-      x = "D\u00edas desde vacunaci\u00f3n",
-      y = "Efectividad (VE)",
-      color = "Prior"
-    ) +
-    ggplot2::theme_minimal()
+dir_figuras <- file.path("presentacion", "figuras")
+dir.create(dir_figuras, recursive = TRUE, showWarnings = FALSE)
+
+tema_presentacion <- ggplot2::theme_minimal(base_size = 14) +
+  ggplot2::theme(
+    plot.title = ggplot2::element_text(face = "bold", size = 18),
+    plot.subtitle = ggplot2::element_text(color = "gray35", size = 12),
+    panel.grid.minor = ggplot2::element_blank(),
+    axis.title = ggplot2::element_text(face = "bold"),
+    legend.position = "bottom"
+  )
+
+guardar_figura <- function(plot, archivo, width = 9.5, height = 4.8) {
+  ggplot2::ggsave(
+    filename = file.path(dir_figuras, archivo),
+    plot = plot,
+    width = width,
+    height = height,
+    dpi = 220,
+    bg = "white"
+  )
+}
 ```
 
-```{r}
-# ---- Figura auxiliar: VE por bin temporal solo con Beta(1,1) ----
+## Paso 2 — Posterior bayesiano: IC/HPDI
 
-tabla_VE_tiempo %>%
-  filter(prior == "Beta(1,1)", bin_tiempo != "No vacunada") %>%
-  mutate(bin_tiempo = factor(bin_tiempo, levels = bins_vacunados)) %>%
-  ggplot(aes(x = bin_tiempo, y = VE_mediana)) +
-  geom_point(size = 3, color = "steelblue") +
-  geom_errorbar(aes(ymin = VE_hpdi_inf, ymax = VE_hpdi_sup), width = 0.2, color = "steelblue") +
-  geom_hline(yintercept = VE_freq, linetype = "dashed", color = "firebrick") +
-  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
-  labs(title = "Figura auxiliar: efectividad Velmyra por per\u00edodo desde vacunaci\u00f3n",
-       subtitle = "Solo prior Beta(1,1); la figura principal compara ambos priors",
-       x = "D\u00edas desde vacunaci\u00f3n", y = "Efectividad (VE)") +
-  theme_minimal()
+```{r, echo=FALSE}
+# ---- Figura 0: comparación IC/HPDI para slide posterior ----
+
+fig0_datos <- tibble::tibble(
+  estimador = factor(
+    c("Wald oficial", "Prior débil", "Prior fase III"),
+    levels = c("Prior fase III", "Prior débil", "Wald oficial")
+  ),
+  mediana = c(71.8, 71.4, 75.7),
+  lo = c(62.2, 62.4, 69.8),
+  hi = c(78.9, 79.2, 81.1),
+  tipo = c("IC 95%", "HPDI 95%", "HPDI 95%")
+)
+
+fig0 <- fig0_datos %>%
+  ggplot2::ggplot(ggplot2::aes(y = estimador, color = estimador)) +
+  ggplot2::geom_segment(
+    ggplot2::aes(x = lo, xend = hi, yend = estimador),
+    linewidth = 2,
+    lineend = "round"
+  ) +
+  ggplot2::geom_point(ggplot2::aes(x = mediana), size = 4) +
+  ggplot2::geom_text(
+    ggplot2::aes(x = hi + 1.2, label = sprintf("%.1f%% [%.1f, %.1f]", mediana, lo, hi)),
+    hjust = 0,
+    size = 4,
+    show.legend = FALSE
+  ) +
+  ggplot2::scale_x_continuous(limits = c(58, 86), breaks = seq(60, 85, by = 5)) +
+  ggplot2::scale_color_manual(values = c(
+    "Wald oficial" = "gray45",
+    "Prior débil" = "#007785",
+    "Prior fase III" = "#D27624"
+  )) +
+  ggplot2::labs(
+    title = "IC frecuentista y HPDI posterior cuentan historias distintas",
+    subtitle = "Los valores son parecidos; la interpretación no",
+    x = "Efectividad vacunal (%)",
+    y = NULL,
+    color = NULL
+  ) +
+  tema_presentacion
+
+guardar_figura(fig0, "fig0_posterior_intervalos.png")
+fig0
 ```
 
+## Paso 3 — Tiempo desde vacunación
 
+```{r, echo=FALSE}
+# ---- Figura 1: VE por tiempo, Beta(1,1) ----
 
-```{r}
-# ---- Figura 2: Grilla edad × tiempo ----
+fig1_datos <- tabla_VE_tiempo %>%
+  dplyr::filter(prior == "Beta(1,1)", bin_tiempo != "No vacunada") %>%
+  dplyr::mutate(
+    bin_tiempo = factor(bin_tiempo, levels = bins_vacunados),
+    etiqueta = sprintf("%.1f%%", 100 * VE_mediana)
+  )
 
-tabla_cruce %>%
-  mutate(
-    bin    = factor(bin, levels = bins_vacunados),
-    etiq   = case_when(
-      is.na(VE_mediana) ~ "sin datos",
-      TRUE ~ sprintf("%.0f%%\n[%.0f, %.0f]%s",
-                     100 * VE_mediana, 100 * HPDI_lo, 100 * HPDI_hi,
-                     ifelse(celda_inestable, "\ninestable", ""))
+fig1 <- fig1_datos %>%
+  ggplot2::ggplot(ggplot2::aes(x = bin_tiempo, y = VE_mediana)) +
+  ggplot2::geom_col(width = 0.58, fill = "#D9EEF1", color = "#007785") +
+  ggplot2::geom_errorbar(
+    ggplot2::aes(ymin = VE_hpdi_inf, ymax = VE_hpdi_sup),
+    width = 0.16,
+    linewidth = 0.9,
+    color = "#1C222B"
+  ) +
+  ggplot2::geom_point(size = 3.4, color = "#007785") +
+  ggplot2::geom_text(
+    ggplot2::aes(label = etiqueta),
+    vjust = -1.05,
+    fontface = "bold",
+    color = "#005360",
+    size = 4
+  ) +
+  ggplot2::geom_hline(yintercept = VE_freq, linetype = "dashed", color = "#B03840") +
+  ggplot2::annotate("text", x = 3.15, y = VE_freq + 0.045, label = "VE agregada reproducida: 71.8%",
+                    color = "#B03840", size = 3.8, hjust = 0) +
+  ggplot2::scale_y_continuous(labels = scales::percent, limits = c(0, 1.03)) +
+  ggplot2::labs(
+    title = "La efectividad cae al avanzar el tiempo desde vacunación",
+    subtitle = "Mediana posterior e HPDI 95%, prior Beta(1,1)",
+    x = "Días desde vacunación",
+    y = "Efectividad (VE)"
+  ) +
+  tema_presentacion +
+  ggplot2::theme(legend.position = "none")
+
+guardar_figura(fig1, "fig1_ve_tiempo_beta11.png")
+fig1
+```
+
+## Paso 4 — Edad × tiempo
+
+```{r, echo=FALSE}
+# ---- Figura 2: grilla edad x tiempo ----
+
+fig2_datos <- tabla_cruce %>%
+  dplyr::mutate(
+    bin = factor(bin, levels = bins_vacunados),
+    grupo_edad = factor(grupo_edad, levels = rev(c("18-49", "50-64", "65+"))),
+    etiq = dplyr::case_when(
+      is.na(VE_mediana) ~ "sin datos\ninestable",
+      celda_inestable ~ sprintf("%.0f%%\n[%.0f, %.0f]\ninestable",
+                                100 * VE_mediana, 100 * HPDI_lo, 100 * HPDI_hi),
+      TRUE ~ sprintf("%.0f%%\n[%.0f, %.0f]",
+                     100 * VE_mediana, 100 * HPDI_lo, 100 * HPDI_hi)
     )
-  ) %>%
-  ggplot(aes(x = bin, y = grupo_edad, fill = VE_mediana)) +
-  geom_tile(color = "white") +
-  geom_text(aes(label = etiq), size = 3) +
-  scale_fill_gradient2(low = "firebrick", mid = "white", high = "steelblue",
-                       midpoint = 0.5, na.value = "gray90",
-                       labels = scales::percent) +
-  labs(title = "Figura 2: grilla VE - Edad \u00d7 Tiempo (Beta-Binomial)",
-       subtitle = "Celdas = mediana VE | texto = HPDI 95%",
-       x = "D\u00edas desde vacunaci\u00f3n", y = "Grupo de edad", fill = "VE mediana") +
-  theme_minimal()
+  )
+
+fig2 <- fig2_datos %>%
+  ggplot2::ggplot(ggplot2::aes(x = bin, y = grupo_edad, fill = VE_mediana)) +
+  ggplot2::geom_tile(color = "white", linewidth = 1.4) +
+  ggplot2::geom_text(ggplot2::aes(label = etiq), size = 3.5, lineheight = 0.86) +
+  ggplot2::scale_fill_gradient2(
+    low = "#B03840",
+    mid = "white",
+    high = "#007785",
+    midpoint = 0.6,
+    na.value = "gray88",
+    labels = scales::percent,
+    limits = c(0, 1)
+  ) +
+  ggplot2::labs(
+    title = "Edad x tiempo: el promedio esconde celdas frágiles",
+    subtitle = "6/12 celdas son inestables; cada celda muestra VE mediana e HPDI 95%",
+    x = "Días desde vacunación",
+    y = "Grupo de edad",
+    fill = "VE mediana"
+  ) +
+  tema_presentacion
+
+guardar_figura(fig2, "fig2_edad_tiempo_heatmap.png", width = 9.6, height = 5.2)
+fig2
 ```
 
-```{r}
-# ---- Figura 3: Sensibilidad al confusor (débil → moderado → agresivo) ----
+## Paso 6 — Sensibilidad a confusor no medido
 
-resultados_sens %>%
-  mutate(prior = factor(prior, levels = c("debil", "moderado", "agresivo"),
-                        labels = c("D\u00e9bil", "Moderado", "Agresivo"))) %>%
-  ggplot(aes(x = prior, y = VE_mediana, color = prior)) +
-  geom_point(size = 3) +
-  geom_errorbar(aes(ymin = HPDI_lo, ymax = HPDI_hi), width = 0.2) +
-  geom_hline(yintercept = VE_freq, linetype = "dashed", color = "gray40") +
-  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
-  scale_color_manual(values = c("steelblue", "orange", "firebrick")) +
-  labs(title = "Figura 3: sensibilidad de VE a confusor no medido",
-       subtitle = "\u03b2_causal = \u03b2_obs \u2212 \u03b4 | tres priors sobre \u03b4",
-       x = "Prior sobre sesgo (\u03b4)", y = "VE causal (mediana + HPDI 95%)") +
-  theme_minimal() + theme(legend.position = "none")
+```{r, echo=FALSE}
+# ---- Figura 3: sensibilidad al confusor ----
+
+fig3_datos <- resultados_sens %>%
+  dplyr::mutate(
+    prior = factor(
+      prior,
+      levels = c("debil", "moderado", "agresivo"),
+      labels = c("Débil", "Moderado", "Agresivo")
+    ),
+    etiqueta = sprintf("%.1f%%", 100 * VE_mediana)
+  )
+
+fig3 <- fig3_datos %>%
+  ggplot2::ggplot(ggplot2::aes(x = prior, y = VE_mediana, color = prior)) +
+  ggplot2::geom_errorbar(ggplot2::aes(ymin = HPDI_lo, ymax = HPDI_hi), width = 0.18, linewidth = 1) +
+  ggplot2::geom_point(size = 4) +
+  ggplot2::geom_text(ggplot2::aes(label = etiqueta), vjust = -1.15, fontface = "bold", size = 4) +
+  ggplot2::geom_hline(yintercept = VE_freq, linetype = "dashed", color = "gray40") +
+  ggplot2::annotate("text", x = 2.4, y = VE_freq + 0.045, label = "VE agregada reproducida",
+                    color = "gray35", size = 3.8, hjust = 0) +
+  ggplot2::scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  ggplot2::scale_color_manual(values = c("#007785", "#D27624", "#B03840")) +
+  ggplot2::labs(
+    title = "Sensibilidad: cuánto debería movernos un confusor no medido",
+    subtitle = "β_causal = β_obs − δ; mediana posterior e HPDI 95%",
+    x = "Escenario para el sesgo",
+    y = "VE causal"
+  ) +
+  tema_presentacion +
+  ggplot2::theme(legend.position = "none")
+
+guardar_figura(fig3, "fig3_sensibilidad_confusor.png")
+fig3
 ```
 
 # Discusión ética y límites del reanálisis
