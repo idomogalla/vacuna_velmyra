@@ -606,8 +606,6 @@ N_samp_sens <- N_samp   # alias para paso 6
   #   "No vacunada" no es un bin temporal: se conserva como referencia/control.
   #   Para esa fila, VE se calcula contra si misma y por eso queda en 0.
 
-  set.seed(123)
-
   N_sim <- 10000
 
   priors <- tibble::tribble(
@@ -1106,7 +1104,6 @@ modelo_quap_m2 <- quap(
 
 # rethinking::WAIC calcula automáticamente lppd, pWAIC y SE
 
-set.seed(777)
 waic_M1 <- rethinking::WAIC(modelo_quap_debil, n = N_samp)
 waic_M2 <- rethinking::WAIC(modelo_quap_m2,    n = N_samp)
 
@@ -1137,7 +1134,6 @@ tabla_waic(waic_M2) %>%
 
 # Comparación directa con rethinking::compare
 
-set.seed(777)
 comp <- rethinking::compare(modelo_quap_debil, modelo_quap_m2)
 cat("Comparación de modelos:\n\n")
 tabla_comp <- tryCatch({
@@ -1173,7 +1169,6 @@ queja1_sens <- tabla_VE_tiempo %>%
 queja1_pico <- tabla_VE_tiempo %>%
   filter(bin_tiempo == "0-90", prior == "Beta(1,1)")
 
-set.seed(881)
 n_post_q1 <- N_sim
 
 conteo_bin_q1 <- function(bin_objetivo) {
@@ -1257,7 +1252,6 @@ cat("Una edad de 72 años cae en `65+`; nueve meses cae dentro del bin `181-270`
 queja2 <- tabla_cruce %>%
   filter(grupo_edad == "65+", bin == "181-270")
 
-set.seed(882)
 n_post_q2 <- N_sim
 
 conteo_q2_v <- df %>%
@@ -1509,10 +1503,886 @@ guardar_figura(fig3, "fig3_sensibilidad_confusor.png")
 fig3
 ```
 
+# Bonus v2: cohorte ampliada y vacunación previa
+
+Resultados de la cohorte ampliada. La v2 se usa como actualización descriptiva
+y no como una nueva identificación causal.
+
+```{r, echo=FALSE}
+df_v2 <- readr::read_csv("datos/cohorte_fase4_v2.csv", show_col_types = FALSE)
+
+cols_esperadas_v2 <- c(
+  cols_esperadas,
+  "vacunacion_previa",
+  "mes_inclusion",
+  "expuesto"
+)
+
+faltantes_v2 <- setdiff(cols_esperadas_v2, names(df_v2))
+
+if (length(faltantes_v2) > 0) {
+  warning("Columnas faltantes en v2: ", paste(faltantes_v2, collapse = ", "))
+}
+
+df_v2 <- df_v2 %>%
+  mutate(
+    edad_cat = cut(
+      edad,
+      breaks = c(17, 49, 69, 100),
+      labels = c("18-49", "50-69", "70+")
+    ),
+    grupo_edad = cut(
+      edad,
+      breaks = c(17, 49, 64, Inf),
+      labels = c("18-49", "50-64", "65+")
+    ),
+    bin_tiempo = case_when(
+      vacunada == 0 ~ "No vacunada",
+      vacunada == 1 & dias_desde_vacunacion >= 0   & dias_desde_vacunacion <= 90  ~ "0-90",
+      vacunada == 1 & dias_desde_vacunacion >= 91  & dias_desde_vacunacion <= 180 ~ "91-180",
+      vacunada == 1 & dias_desde_vacunacion >= 181 & dias_desde_vacunacion <= 270 ~ "181-270",
+      vacunada == 1 & dias_desde_vacunacion >= 271 & dias_desde_vacunacion <= 365 ~ "271-365",
+      TRUE ~ NA_character_
+    ),
+    bin_tiempo = factor(bin_tiempo, levels = niveles_exposicion_tiempo)
+  )
+
+cat("Dimensiones del dataset v2:", nrow(df_v2), "filas x", ncol(df_v2), "columnas\n")
+glimpse(df_v2)
+```
+
+## Diagnóstico de vacunación previa
+
+```{r, echo=FALSE, results='asis', comment=""}
+cat("Distribución de `vacunacion_previa` por estado de vacunación actual.\n\n")
+
+df_v2 %>%
+  count(vacunada, vacunacion_previa, name = "n") %>%
+  group_by(vacunada) %>%
+  mutate(prop_dentro_vacunada = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(prop_dentro_vacunada = round(100 * prop_dentro_vacunada, 1)) %>%
+  knitr::kable()
+
+cat("\n\nDistribución de `vacunacion_previa` por hospitalización.\n\n")
+
+df_v2 %>%
+  count(hospitalizada, vacunacion_previa, name = "n") %>%
+  group_by(hospitalizada) %>%
+  mutate(prop_dentro_hospitalizada = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(prop_dentro_hospitalizada = round(100 * prop_dentro_hospitalizada, 1)) %>%
+  knitr::kable()
+
+cat("\n\nTasa observada de hospitalización por vacunación actual y previa.\n\n")
+
+df_v2 %>%
+  group_by(vacunada, vacunacion_previa) %>%
+  summarise(
+    n = n(),
+    hospitalizadas = sum(hospitalizada),
+    tasa_obs = hospitalizadas / n,
+    .groups = "drop"
+  ) %>%
+  mutate(tasa_obs = round(100 * tasa_obs, 2)) %>%
+  knitr::kable()
+```
+
+## Modelos bayesianos v2 con y sin vacunación previa
+
+Comparación con/sin vacunación previa.
+
+```{r, echo=FALSE}
+dat_v2_sin_previa <- list(
+  hospitalizada = as.integer(df_v2$hospitalizada),
+  vacunada      = as.integer(df_v2$vacunada),
+  edad_50_69    = as.integer(df_v2$edad_cat == "50-69"),
+  edad_70_plus  = as.integer(df_v2$edad_cat == "70+"),
+  sexo          = as.integer(factor(df_v2$sexo)) - 1L,
+  comorbilidad  = as.integer(df_v2$comorbilidad)
+)
+
+dat_v2_con_previa <- c(
+  dat_v2_sin_previa,
+  list(previa = as.integer(df_v2$vacunacion_previa))
+)
+
+modelo_v2_sin_previa <- quap(
+  alist(
+    hospitalizada ~ dbinom(1, p),
+    logit(p) <- a +
+      bV * vacunada +
+      bE50 * edad_50_69 +
+      bE70 * edad_70_plus +
+      bS * sexo +
+      bCom * comorbilidad,
+    a ~ dnorm(0, 2.5),
+    bV ~ dnorm(0, 2.5),
+    bE50 ~ dnorm(0, 2.5),
+    bE70 ~ dnorm(0, 2.5),
+    bS ~ dnorm(0, 2.5),
+    bCom ~ dnorm(0, 2.5)
+  ),
+  data = dat_v2_sin_previa
+)
+
+modelo_v2_con_previa <- quap(
+  alist(
+    hospitalizada ~ dbinom(1, p),
+    logit(p) <- a +
+      bV * vacunada +
+      bPrev * previa +
+      bE50 * edad_50_69 +
+      bE70 * edad_70_plus +
+      bS * sexo +
+      bCom * comorbilidad,
+    a ~ dnorm(0, 2.5),
+    bV ~ dnorm(0, 2.5),
+    bPrev ~ dnorm(0, 2.5),
+    bE50 ~ dnorm(0, 2.5),
+    bE70 ~ dnorm(0, 2.5),
+    bS ~ dnorm(0, 2.5),
+    bCom ~ dnorm(0, 2.5)
+  ),
+  data = dat_v2_con_previa
+)
+```
+
+```{r, echo=FALSE, results='asis', comment=""}
+tabla_precis_v2 <- function(modelo) {
+  precis_obj <- precis(modelo, prob = 0.95, depth = 2)
+  as.data.frame(unclass(precis_obj), check.names = FALSE) %>%
+    tibble::rownames_to_column("parametro") %>%
+    mutate(across(any_of(c("mean", "sd", "2.5%", "97.5%")), ~ round(.x, 3)))
+}
+
+cat("Modelo v2 sin `vacunacion_previa`.\n\n")
+tabla_precis_v2(modelo_v2_sin_previa) %>%
+  knitr::kable()
+
+cat("\n\nModelo v2 con `vacunacion_previa`.\n\n")
+tabla_precis_v2(modelo_v2_con_previa) %>%
+  knitr::kable()
+```
+
+```{r, echo=FALSE, results='asis', comment=""}
+samp_v2_sin_previa <- extract.samples(modelo_v2_sin_previa, n = N_samp)
+samp_v2_con_previa <- extract.samples(modelo_v2_con_previa, n = N_samp)
+
+resumen_posterior_por_muestras <- function(x) {
+  hp <- as.numeric(HPDI(x, prob = 0.95))
+  tibble::tibble(
+    mediana = stats::median(x),
+    hpdi_inf = hp[1],
+    hpdi_sup = hp[2],
+    prob_mayor_0 = mean(x > 0)
+  )
+}
+
+tabla_ve_v2 <- bind_rows(
+  resumen_posterior_por_muestras(1 - exp(samp_v2_sin_previa$bV)) %>%
+    mutate(modelo = "v2 sin vacunacion_previa"),
+  resumen_posterior_por_muestras(1 - exp(samp_v2_con_previa$bV)) %>%
+    mutate(modelo = "v2 con vacunacion_previa")
+) %>%
+  relocate(modelo) %>%
+  mutate(across(c(mediana, hpdi_inf, hpdi_sup, prob_mayor_0), ~ round(100 * .x, 1)))
+
+cat("VE posterior asociada a `vacunada` en ambos modelos.\n\n")
+tabla_ve_v2 %>%
+  rename(
+    VE_mediana_pct = mediana,
+    VE_hpdi_inf_pct = hpdi_inf,
+    VE_hpdi_sup_pct = hpdi_sup,
+    prob_VE_mayor_0_pct = prob_mayor_0
+  ) %>%
+  knitr::kable()
+
+ve_v2_sin_previa_pct <- tabla_ve_v2 %>%
+  filter(modelo == "v2 sin vacunacion_previa") %>%
+  pull(mediana)
+
+ve_v2_con_previa_pct <- tabla_ve_v2 %>%
+  filter(modelo == "v2 con vacunacion_previa") %>%
+  pull(mediana)
+
+cat(sprintf(
+  "\n\nLa estimación de VE asociada a `vacunada` queda prácticamente igual al ajustar por vacunación previa: aproximadamente %.1f%% sin ajuste por `vacunacion_previa` versus %.1f%% con ajuste. Esto sugiere que, en esta cohorte ampliada, `vacunacion_previa` aporta información adicional sobre riesgo, pero no desplaza materialmente el contraste principal de vacunación actual.\n",
+  ve_v2_sin_previa_pct,
+  ve_v2_con_previa_pct
+))
+
+cat("En términos del DAG, `vacunacion_previa` puede leerse como una covariable medida adicional o como proxy parcial de historia de riesgo y acceso al sistema. No elimina el confusor latente `U`: ajustar por variables medidas reduce confusión observable, pero no cierra completamente el sesgo del vacunado sano si `U` permanece no observado.\n")
+
+tabla_global_ve_comparada <- bind_rows(
+  resumen_posterior_por_muestras(VE_debil) %>%
+    mutate(modelo = "v1 prior débil"),
+  resumen_posterior_por_muestras(1 - exp(samp_v2_sin_previa$bV)) %>%
+    mutate(modelo = "v2 sin vacunación previa"),
+  resumen_posterior_por_muestras(1 - exp(samp_v2_con_previa$bV)) %>%
+    mutate(modelo = "v2 con vacunación previa")
+) %>%
+  mutate(
+    modelo = factor(modelo, levels = c(
+      "v1 prior débil",
+      "v2 sin vacunación previa",
+      "v2 con vacunación previa"
+    )),
+    across(c(mediana, hpdi_inf, hpdi_sup), ~ 100 * .x)
+  )
+
+tabla_global_ve_comparada %>%
+  ggplot(aes(x = modelo, y = mediana, ymin = hpdi_inf, ymax = hpdi_sup)) +
+  geom_pointrange(linewidth = 0.7, color = "#2A6F97") +
+  coord_flip() +
+  tema_presentacion +
+  labs(
+    title = "VE posterior global: v1 versus v2",
+    x = NULL,
+    y = "VE posterior (%)"
+  )
+
+tabla_efecto_previa_v2 <- tibble::tibble(
+  estimand = c("beta_prev", "OR_prev", "1 - OR_prev"),
+  mediana = c(
+    median(samp_v2_con_previa$bPrev),
+    median(exp(samp_v2_con_previa$bPrev)),
+    median(1 - exp(samp_v2_con_previa$bPrev))
+  ),
+  hpdi_inf = c(
+    as.numeric(HPDI(samp_v2_con_previa$bPrev, prob = 0.95))[1],
+    as.numeric(HPDI(exp(samp_v2_con_previa$bPrev), prob = 0.95))[1],
+    as.numeric(HPDI(1 - exp(samp_v2_con_previa$bPrev), prob = 0.95))[1]
+  ),
+  hpdi_sup = c(
+    as.numeric(HPDI(samp_v2_con_previa$bPrev, prob = 0.95))[2],
+    as.numeric(HPDI(exp(samp_v2_con_previa$bPrev), prob = 0.95))[2],
+    as.numeric(HPDI(1 - exp(samp_v2_con_previa$bPrev), prob = 0.95))[2]
+  )
+)
+
+cat("\n\nEfecto posterior de `vacunacion_previa` en el modelo ajustado.\n\n")
+tabla_efecto_previa_v2 %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
+  knitr::kable()
+
+cat(sprintf(
+  "\n\nP(OR asociado a `vacunacion_previa` < 1 | datos) = %.3f\n",
+  mean(exp(samp_v2_con_previa$bPrev) < 1)
+))
+
+or_previa_mediana <- tabla_efecto_previa_v2 %>%
+  filter(estimand == "OR_prev") %>%
+  pull(mediana)
+
+or_previa_hpdi <- tabla_efecto_previa_v2 %>%
+  filter(estimand == "OR_prev") %>%
+  dplyr::select(hpdi_inf, hpdi_sup)
+
+prob_or_previa_menor_1 <- mean(exp(samp_v2_con_previa$bPrev) < 1)
+
+cat(sprintf(
+  "\n\nLa vacunación previa muestra una asociación protectora adicional: OR mediana %.2f, HPDI 95%% [%.2f, %.2f], con `P(OR < 1 | datos) = %.3f`. La lectura es asociativa, porque `vacunacion_previa` puede capturar historia de riesgo y acceso a vacunación, no solo biología inmunológica.\n",
+  or_previa_mediana,
+  or_previa_hpdi$hpdi_inf,
+  or_previa_hpdi$hpdi_sup,
+  prob_or_previa_menor_1
+))
+```
+
+## Tabla temporal v2 Beta-Binomial
+
+```{r, echo=FALSE, results='asis', comment=""}
+idx_nv_v2 <- df_v2$vacunada == 0
+y_nv_v2 <- sum(df_v2$hospitalizada[idx_nv_v2])
+nv_total_v2 <- sum(idx_nv_v2)
+bin_no_vacunada_v2 <- unique(as.character(df_v2$bin_tiempo[idx_nv_v2]))
+
+if (length(bin_no_vacunada_v2) != 1) {
+  stop("Se esperaba un unico nivel de bin_tiempo para las personas no vacunadas en v2.")
+}
+
+simular_ve_tiempo_v2 <- function(alpha_prior, beta_prior, nombre_prior, peso_efectivo) {
+  theta_nv_s <- rbeta(
+    N_sim,
+    shape1 = alpha_prior + y_nv_v2,
+    shape2 = beta_prior + nv_total_v2 - y_nv_v2
+  )
+
+  purrr::map_dfr(niveles_exposicion_tiempo, function(b) {
+    idx_g <- as.character(df_v2$bin_tiempo) == b
+    y_g <- sum(df_v2$hospitalizada[idx_g])
+    n_g <- sum(idx_g)
+
+    if (b == bin_no_vacunada_v2) {
+      VE_bb <- rep(0, N_sim)
+      hp <- c(0, 0)
+    } else {
+      theta_g_s <- rbeta(
+        N_sim,
+        shape1 = alpha_prior + y_g,
+        shape2 = beta_prior + n_g - y_g
+      )
+      VE_bb <- 1 - theta_g_s / theta_nv_s
+      hp <- as.numeric(HPDI(VE_bb, prob = 0.95))
+    }
+
+    tibble::tibble(
+      prior = nombre_prior,
+      peso_efectivo = peso_efectivo,
+      bin_tiempo = b,
+      n = n_g,
+      hospitalizadas = y_g,
+      tasa_obs = ifelse(n_g > 0, y_g / n_g, NA_real_),
+      tasa_obs_no_vacunadas = y_nv_v2 / nv_total_v2,
+      VE_mediana = median(VE_bb),
+      VE_hpdi_inf = hp[1],
+      VE_hpdi_sup = hp[2],
+      VE_muestras = list(VE_bb)
+    )
+  })
+}
+
+tabla_VE_tiempo_v2_muestras <- purrr::pmap_dfr(
+  list(priors$alpha_prior, priors$beta_prior, priors$prior, priors$peso_efectivo),
+  simular_ve_tiempo_v2
+)
+
+tabla_VE_tiempo_v2 <- tabla_VE_tiempo_v2_muestras %>%
+  dplyr::select(-VE_muestras)
+
+tabla_VE_tiempo_v2 %>%
+  mutate(
+    tasa_obs = round(100 * tasa_obs, 2),
+    tasa_obs_no_vacunadas = round(100 * tasa_obs_no_vacunadas, 2),
+    across(c(VE_mediana, VE_hpdi_inf, VE_hpdi_sup), ~ round(100 * .x, 1))
+  ) %>%
+  knitr::kable()
+```
+
+```{r, echo=FALSE, results='asis', comment=""}
+prob_temporal_v2 <- purrr::map_dfr(priors$prior, function(pr) {
+  muestras_0_90 <- tabla_VE_tiempo_v2_muestras %>%
+    filter(prior == pr, bin_tiempo == "0-90") %>%
+    pull(VE_muestras) %>%
+    .[[1]]
+
+  muestras_271_365 <- tabla_VE_tiempo_v2_muestras %>%
+    filter(prior == pr, bin_tiempo == "271-365") %>%
+    pull(VE_muestras) %>%
+    .[[1]]
+
+  tibble::tibble(
+    prior = pr,
+    `P(VE_271-365 < VE_0-90 | datos)` = mean(muestras_271_365 < muestras_0_90),
+    `P(VE_271-365 > 0 | datos)` = mean(muestras_271_365 > 0)
+  )
+})
+
+cat("Probabilidades posteriores temporales v2.\n\n")
+prob_temporal_v2 %>%
+  mutate(across(where(is.numeric), ~ round(.x, 3))) %>%
+  knitr::kable()
+
+prob_tardia_menor_temprana_v2 <- prob_temporal_v2 %>%
+  filter(prior == "Beta(1,1)") %>%
+  pull(`P(VE_271-365 < VE_0-90 | datos)`)
+
+cat(sprintf(
+  "\n\nEl patrón temporal se mantiene respecto de v1: la VE es alta en los bins tempranos y menor en los bins tardíos. En v2, para `Beta(1,1)`, `P(VE_271-365 < VE_0-90 | datos)` queda en %.3f, prácticamente 1.\n",
+  prob_tardia_menor_temprana_v2
+))
+```
+
+## Comparación v1 vs v2: tiempo, edad x tiempo y quejas
+
+```{r, echo=FALSE}
+tabla_temporal_v1_v2 <- bind_rows(
+  tabla_VE_tiempo %>%
+    filter(prior == "Beta(1,1)", bin_tiempo != "No vacunada") %>%
+    mutate(cohorte = "v1 (~10 mil)"),
+  tabla_VE_tiempo_v2 %>%
+    filter(prior == "Beta(1,1)", bin_tiempo != "No vacunada") %>%
+    mutate(cohorte = "v2 (~25 mil)")
+) %>%
+  mutate(
+    cohorte = factor(cohorte, levels = c("v1 (~10 mil)", "v2 (~25 mil)")),
+    bin_tiempo = factor(bin_tiempo, levels = bins_vacunados),
+    across(c(VE_mediana, VE_hpdi_inf, VE_hpdi_sup), ~ 100 * .x)
+  )
+
+fig_temporal_v1_v2 <- ggplot(tabla_temporal_v1_v2, aes(x = bin_tiempo, y = VE_mediana, color = cohorte)) +
+  geom_errorbar(
+    aes(ymin = VE_hpdi_inf, ymax = VE_hpdi_sup),
+    width = 0.12,
+    position = position_dodge(width = 0.45),
+    linewidth = 0.7
+  ) +
+  geom_point(position = position_dodge(width = 0.45), size = 2.6) +
+  tema_presentacion +
+  labs(
+    title = "VE por tiempo desde vacunación: v1 versus v2",
+    x = "Días desde vacunación",
+    y = "VE posterior (%)",
+    color = "Cohorte"
+  )
+
+fig_temporal_v1_v2
+```
+
+```{r, echo=FALSE, results='asis', comment=""}
+cat("Resumen temporal v1 vs v2 para `Beta(1,1)`, excluyendo la referencia no vacunada.\n\n")
+
+tabla_temporal_v1_v2_resumen <- tabla_temporal_v1_v2 %>%
+  transmute(
+    cohorte = as.character(cohorte),
+    bin_tiempo = as.character(bin_tiempo),
+    n,
+    hospitalizadas,
+    VE_mediana_pct = round(VE_mediana, 1),
+    HPDI_inf_pct = round(VE_hpdi_inf, 1),
+    HPDI_sup_pct = round(VE_hpdi_sup, 1)
+  )
+
+tabla_temporal_v1_v2_resumen %>%
+  knitr::kable()
+```
+
+### Grilla edad x tiempo v2
+
+```{r, echo=FALSE, results='asis', comment=""}
+tabla_cruce_v2 <- purrr::map_dfr(grupos_edad, function(ge) {
+  nv_edad <- df_v2 %>%
+    filter(grupo_edad == ge, vacunada == 0) %>%
+    summarise(hosp = sum(hospitalizada), total = n())
+
+  purrr::map_dfr(bins_vacunados, function(b) {
+    fila_V <- df_v2 %>%
+      filter(grupo_edad == ge, vacunada == 1, bin_tiempo == b) %>%
+      summarise(hosp = sum(hospitalizada), total = n())
+
+    if (fila_V$total == 0 | nv_edad$total == 0) {
+      return(tibble::tibble(
+        grupo_edad = ge,
+        bin = b,
+        n_V = fila_V$total,
+        n_NV = nv_edad$total,
+        hosp_V = fila_V$hosp,
+        hosp_NV = nv_edad$hosp,
+        VE_mediana = NA_real_,
+        HPDI_lo = NA_real_,
+        HPDI_hi = NA_real_,
+        celda_inestable = TRUE,
+        motivo_inestabilidad = "n_V = 0"
+      ))
+    }
+
+    theta_V_s <- rbeta(N_sim, 1 + fila_V$hosp, 1 + fila_V$total - fila_V$hosp)
+    theta_NV_s <- rbeta(N_sim, 1 + nv_edad$hosp, 1 + nv_edad$total - nv_edad$hosp)
+
+    VE_bb <- 1 - theta_V_s / theta_NV_s
+    hp <- as.numeric(HPDI(VE_bb, prob = 0.95))
+
+    celda_inestable <- fila_V$total == 0 |
+      fila_V$hosp < 3 |
+      fila_V$total < 30 |
+      (hp[2] - hp[1]) > 0.75
+
+    motivos <- c(
+      if (fila_V$total == 0) "n_V = 0",
+      if (fila_V$hosp < 3) "hosp_V < 3",
+      if (fila_V$total < 30) "n_V < 30",
+      if ((hp[2] - hp[1]) > 0.75) "HPDI ancho"
+    )
+
+    tibble::tibble(
+      grupo_edad = ge,
+      bin = b,
+      n_V = fila_V$total,
+      n_NV = nv_edad$total,
+      hosp_V = fila_V$hosp,
+      hosp_NV = nv_edad$hosp,
+      VE_mediana = median(VE_bb),
+      HPDI_lo = hp[1],
+      HPDI_hi = hp[2],
+      celda_inestable = celda_inestable,
+      motivo_inestabilidad = ifelse(celda_inestable, paste(motivos, collapse = "; "), "ok")
+    )
+  })
+})
+
+stopifnot(nrow(tabla_cruce_v2) == 12)
+
+cat("Grilla v2 con conteos crudos y VE bayesiana.\n\n")
+
+tabla_cruce_v2 %>%
+  mutate(
+    riesgo_obs_V = ifelse(n_V > 0, round(100 * hosp_V / n_V, 2), NA_real_),
+    riesgo_obs_NV = ifelse(n_NV > 0, round(100 * hosp_NV / n_NV, 2), NA_real_),
+    across(c(VE_mediana, HPDI_lo, HPDI_hi), ~ ifelse(is.na(.x), NA_real_, round(100 * .x, 1))),
+    nota = ifelse(celda_inestable, paste("inestable:", motivo_inestabilidad), "ok")
+  ) %>%
+  knitr::kable()
+
+cat("\n\nCelda `65+ x 181-270` en la cohorte v2.\n\n")
+
+celda_65_181_270_v2 <- tabla_cruce_v2 %>%
+  filter(grupo_edad == "65+", bin == "181-270")
+
+celda_65_181_270_v2 %>%
+  mutate(
+    riesgo_obs_V = ifelse(n_V > 0, round(100 * hosp_V / n_V, 2), NA_real_),
+    riesgo_obs_NV = ifelse(n_NV > 0, round(100 * hosp_NV / n_NV, 2), NA_real_),
+    across(c(VE_mediana, HPDI_lo, HPDI_hi), ~ round(100 * .x, 1))
+  ) %>%
+  knitr::kable()
+
+celda_65_181_270_v1 <- tabla_cruce %>%
+  filter(grupo_edad == "65+", bin == "181-270")
+
+cat(sprintf(
+  "\n\nComparada con v1, la celda `65+ x 181-270` conserva protección positiva, aunque con una estimación algo menor en la cohorte ampliada. En v1 fue aproximadamente %.1f%% [%.1f, %.1f], mientras que en v2 queda aproximadamente %.1f%% [%.1f, %.1f].\n",
+  100 * celda_65_181_270_v1$VE_mediana,
+  100 * celda_65_181_270_v1$HPDI_lo,
+  100 * celda_65_181_270_v1$HPDI_hi,
+  100 * celda_65_181_270_v2$VE_mediana,
+  100 * celda_65_181_270_v2$HPDI_lo,
+  100 * celda_65_181_270_v2$HPDI_hi
+))
+```
+
+```{r, echo=FALSE}
+tabla_cruce_v1_v2 <- bind_rows(
+  tabla_cruce %>%
+    mutate(cohorte = "v1 (~10 mil)"),
+  tabla_cruce_v2 %>%
+    mutate(cohorte = "v2 (~25 mil)")
+) %>%
+  mutate(
+    cohorte = factor(cohorte, levels = c("v1 (~10 mil)", "v2 (~25 mil)")),
+    bin = factor(bin, levels = bins_vacunados),
+    grupo_edad = factor(grupo_edad, levels = rev(c("18-49", "50-64", "65+"))),
+    etiq = dplyr::case_when(
+      is.na(VE_mediana) ~ "sin datos\ninestable",
+      celda_inestable ~ sprintf("%.0f%%\n[%.0f, %.0f]\ninestable",
+                                100 * VE_mediana, 100 * HPDI_lo, 100 * HPDI_hi),
+      TRUE ~ sprintf("%.0f%%\n[%.0f, %.0f]",
+                     100 * VE_mediana, 100 * HPDI_lo, 100 * HPDI_hi)
+    )
+  )
+
+fig_edad_tiempo_v1_v2 <- tabla_cruce_v1_v2 %>%
+  ggplot2::ggplot(ggplot2::aes(x = bin, y = grupo_edad, fill = VE_mediana)) +
+  ggplot2::geom_tile(color = "white", linewidth = 1.2) +
+  ggplot2::geom_text(ggplot2::aes(label = etiq), size = 3.1, lineheight = 0.84) +
+  ggplot2::facet_wrap(~ cohorte, ncol = 2) +
+  ggplot2::scale_fill_gradient2(
+    low = "#B03840",
+    mid = "white",
+    high = "#007785",
+    midpoint = 0.6,
+    na.value = "gray88",
+    labels = scales::percent,
+    limits = c(0, 1)
+  ) +
+  ggplot2::labs(
+    title = "Edad x tiempo: v1 versus v2",
+    subtitle = "Cada celda muestra mediana posterior, HPDI 95% e indicador de inestabilidad",
+    x = "Días desde vacunación",
+    y = "Grupo de edad",
+    fill = "VE mediana"
+  ) +
+  tema_presentacion
+
+fig_edad_tiempo_v1_v2
+```
+
+```{r, echo=FALSE, results='asis', comment=""}
+cat("Resumen edad x tiempo v1 vs v2.\n\n")
+
+tabla_cruce_v1_v2_resumen <- tabla_cruce_v1_v2 %>%
+  transmute(
+    cohorte = as.character(cohorte),
+    grupo_edad = as.character(grupo_edad),
+    bin = as.character(bin),
+    n_V,
+    n_NV,
+    hosp_V,
+    hosp_NV,
+    VE_mediana_pct = ifelse(is.na(VE_mediana), NA_real_, round(100 * VE_mediana, 1)),
+    HPDI_lo_pct = ifelse(is.na(HPDI_lo), NA_real_, round(100 * HPDI_lo, 1)),
+    HPDI_hi_pct = ifelse(is.na(HPDI_hi), NA_real_, round(100 * HPDI_hi, 1)),
+    celda_inestable
+  )
+
+tabla_cruce_v1_v2_resumen %>%
+  knitr::kable()
+```
+
+### Respuestas operativas v1 vs v2
+
+```{r, echo=FALSE, results='asis', comment=""}
+extraer_muestras_temporales <- function(tabla_muestras, prior_objetivo, bin_objetivo) {
+  muestras <- tabla_muestras %>%
+    dplyr::filter(prior == prior_objetivo, bin_tiempo == bin_objetivo) %>%
+    dplyr::pull(VE_muestras)
+
+  if (length(muestras) != 1) {
+    stop("No se encontro una unica muestra para el prior y bin temporal solicitados.")
+  }
+
+  muestras[[1]]
+}
+
+simular_muestras_temporales_pareadas <- function(datos, prior_objetivo, bins_objetivo) {
+  prior_fila <- priors %>%
+    dplyr::filter(prior == prior_objetivo)
+
+  if (nrow(prior_fila) != 1) {
+    stop("Prior temporal no reconocido.")
+  }
+
+  idx_nv <- datos$vacunada == 0
+  y_nv <- sum(datos$hospitalizada[idx_nv])
+  n_nv <- sum(idx_nv)
+
+  theta_nv <- rbeta(
+    N_sim,
+    prior_fila$alpha_prior + y_nv,
+    prior_fila$beta_prior + n_nv - y_nv
+  )
+
+  purrr::map(
+    bins_objetivo,
+    function(bin_objetivo) {
+      idx_bin <- as.character(datos$bin_tiempo) == bin_objetivo
+      y_bin <- sum(datos$hospitalizada[idx_bin])
+      n_bin <- sum(idx_bin)
+
+      theta_bin <- rbeta(
+        N_sim,
+        prior_fila$alpha_prior + y_bin,
+        prior_fila$beta_prior + n_bin - y_bin
+      )
+
+      1 - theta_bin / theta_nv
+    }
+  ) %>%
+    stats::setNames(bins_objetivo)
+}
+
+obtener_muestras_temporales_pareadas <- function(datos, tabla_muestras, prior_objetivo, bins_objetivo) {
+  if (!is.null(tabla_muestras)) {
+    return(purrr::map(
+      bins_objetivo,
+      ~ extraer_muestras_temporales(tabla_muestras, prior_objetivo, .x)
+    ) %>% stats::setNames(bins_objetivo))
+  }
+
+  simular_muestras_temporales_pareadas(datos, prior_objetivo, bins_objetivo)
+}
+
+resumir_queja1 <- function(cohorte, datos, tabla_muestras, prior_objetivo) {
+  muestras <- obtener_muestras_temporales_pareadas(
+    datos,
+    tabla_muestras,
+    prior_objetivo,
+    c("0-90", "271-365")
+  )
+  muestras_0_90 <- muestras[["0-90"]]
+  muestras_271_365 <- muestras[["271-365"]]
+  hp <- as.numeric(HPDI(muestras_271_365, prob = 0.95))
+
+  tibble::tibble(
+    cohorte = cohorte,
+    prior = prior_objetivo,
+    VE_tardia_mediana_pct = 100 * stats::median(muestras_271_365),
+    HPDI_inf_pct = 100 * hp[1],
+    HPDI_sup_pct = 100 * hp[2],
+    prob_tardia_menor_0_90_pct = 100 * mean(muestras_271_365 < muestras_0_90),
+    prob_tardia_mayor_0_pct = 100 * mean(muestras_271_365 > 0)
+  )
+}
+
+tabla_queja1_v1_v2 <- bind_rows(
+  resumir_queja1("v1 (~10 mil)", df, NULL, "Beta(1,1)"),
+  resumir_queja1("v1 (~10 mil)", df, NULL, "Beta(2,8)"),
+  resumir_queja1("v2 (~25 mil)", df_v2, tabla_VE_tiempo_v2_muestras, "Beta(1,1)"),
+  resumir_queja1("v2 (~25 mil)", df_v2, tabla_VE_tiempo_v2_muestras, "Beta(2,8)")
+)
+
+cat("#### Queja 1: vacunación hace aproximadamente 14 meses\n\n")
+cat("Catorce meses sigue fuera del soporte directo: el dataset llega hasta 365 días. Para comparar v1 y v2 se usa el bin observado más cercano, `271-365`, con la misma lógica Beta-Binomial descriptiva.\n\n")
+
+tabla_queja1_v1_v2 %>%
+  mutate(across(ends_with("_pct"), ~ round(.x, 1))) %>%
+  knitr::kable()
+
+q1_beta11 <- tabla_queja1_v1_v2 %>%
+  dplyr::filter(prior == "Beta(1,1)")
+
+q1_v1 <- q1_beta11 %>% dplyr::filter(cohorte == "v1 (~10 mil)")
+q1_v2 <- q1_beta11 %>% dplyr::filter(cohorte == "v2 (~25 mil)")
+q1_cambio <- q1_v2$VE_tardia_mediana_pct - q1_v1$VE_tardia_mediana_pct
+q1_misma_direccion <- q1_v1$prob_tardia_menor_0_90_pct >= 80 &&
+  q1_v2$prob_tardia_menor_0_90_pct >= 80
+
+if (q1_misma_direccion) {
+  cat("\n\nLa respuesta bayesiana se mantiene: en ambas cohortes la VE tardía queda por debajo de la VE del bin `0-90` con alta probabilidad posterior, aunque los intervalos se actualizan con la cohorte ampliada.")
+} else {
+  cat("\n\nLa dirección posterior cambia entre cohortes y conviene comunicar la queja como evidencia descriptiva sensible a la actualización de datos, no como una conclusión causal cerrada.")
+}
+
+if (abs(q1_cambio) >= 5) {
+  cat(sprintf(
+    " La mediana tardía %s %.1f puntos porcentuales en v2; esto es un cambio de magnitud, no una inversión causal.\n\n",
+    ifelse(q1_cambio > 0, "sube", "baja"),
+    abs(q1_cambio)
+  ))
+} else {
+  cat(" La magnitud de la mediana tardía no cambia materialmente en v2.\n\n")
+}
+
+cat("Respuesta operativa: la hospitalización 14 meses después de vacunarse sigue siendo compatible con riesgo residual y posible atenuación respecto del pico observado. No implica que la vacuna no haya funcionado y no permite extrapolar directamente más allá de 365 días.\n\n")
+
+muestras_celda_edad_tiempo <- function(datos, grupo_objetivo = "65+", bin_objetivo = "181-270") {
+  fila_V <- datos %>%
+    dplyr::filter(grupo_edad == grupo_objetivo, vacunada == 1, bin_tiempo == bin_objetivo) %>%
+    dplyr::summarise(hosp = sum(hospitalizada), total = dplyr::n())
+
+  fila_NV <- datos %>%
+    dplyr::filter(grupo_edad == grupo_objetivo, vacunada == 0) %>%
+    dplyr::summarise(hosp = sum(hospitalizada), total = dplyr::n())
+
+  theta_V <- rbeta(N_sim, 1 + fila_V$hosp, 1 + fila_V$total - fila_V$hosp)
+  theta_NV <- rbeta(N_sim, 1 + fila_NV$hosp, 1 + fila_NV$total - fila_NV$hosp)
+
+  tibble::tibble(
+    n_V = fila_V$total,
+    n_NV = fila_NV$total,
+    hosp_V = fila_V$hosp,
+    hosp_NV = fila_NV$hosp,
+    VE_muestras = list(1 - theta_V / theta_NV)
+  )
+}
+
+resumir_queja2 <- function(cohorte, datos) {
+  celda <- muestras_celda_edad_tiempo(datos)
+  muestras <- celda$VE_muestras[[1]]
+  hp <- as.numeric(HPDI(muestras, prob = 0.95))
+
+  tibble::tibble(
+    cohorte = cohorte,
+    n_V = celda$n_V,
+    n_NV = celda$n_NV,
+    hosp_V = celda$hosp_V,
+    hosp_NV = celda$hosp_NV,
+    VE_mediana_pct = 100 * stats::median(muestras),
+    HPDI_inf_pct = 100 * hp[1],
+    HPDI_sup_pct = 100 * hp[2],
+    prob_VE_mayor_0_pct = 100 * mean(muestras > 0),
+    prob_VE_mayor_50_pct = 100 * mean(muestras > 0.50)
+  )
+}
+
+tabla_queja2_v1_v2 <- bind_rows(
+  resumir_queja2("v1 (~10 mil)", df),
+  resumir_queja2("v2 (~25 mil)", df_v2)
+)
+
+cat("#### Queja 2: paciente de 72 años, vacunada hace aproximadamente 9 meses\n\n")
+cat("La comparación usa la celda `65+ x 181-270` en ambas cohortes y mantiene la referencia contra no vacunadas del mismo grupo etario, sin ajustar por `vacunacion_previa`.\n\n")
+
+tabla_queja2_v1_v2 %>%
+  mutate(across(ends_with("_pct"), ~ round(.x, 1))) %>%
+  knitr::kable()
+
+q2_v1 <- tabla_queja2_v1_v2 %>% dplyr::filter(cohorte == "v1 (~10 mil)")
+q2_v2 <- tabla_queja2_v1_v2 %>% dplyr::filter(cohorte == "v2 (~25 mil)")
+q2_cambio <- q2_v2$VE_mediana_pct - q2_v1$VE_mediana_pct
+q2_misma_direccion <- q2_v1$prob_VE_mayor_0_pct >= 80 &&
+  q2_v2$prob_VE_mayor_0_pct >= 80
+
+if (q2_misma_direccion) {
+  cat("\n\nLa respuesta bayesiana se mantiene: ambas cohortes favorecen VE positiva para `65+ x 181-270`, con intervalos actualizados por la cohorte ampliada.")
+} else {
+  cat("\n\nLa dirección posterior cambia en la celda `65+ x 181-270`; la respuesta operativa debe presentarse como más incierta con la cohorte ampliada.")
+}
+
+if (abs(q2_cambio) >= 5) {
+  cat(sprintf(
+    " La mediana de VE %s %.1f puntos porcentuales en v2; esto describe un cambio de magnitud, no una inversión causal.\n\n",
+    ifelse(q2_cambio > 0, "sube", "baja"),
+    abs(q2_cambio)
+  ))
+} else {
+  cat(" La magnitud de la mediana no cambia materialmente en v2.\n\n")
+}
+
+cat("Respuesta operativa: para una paciente de 72 años vacunada hace 9 meses, la lectura sigue siendo probabilística y poblacional. La protección estimada no es absoluta; la decisión de refuerzo corresponde a una política sanitaria general de duración y riesgo, no a inferir fracaso individual desde una hospitalización.\n")
+
+fmt_pct <- function(x) sprintf("%.1f%%", x)
+fmt_hpdi <- function(lo, hi) sprintf("[%.1f, %.1f]", lo, hi)
+
+q1_v1_beta11 <- q1_v1
+q1_v2_beta11 <- q1_v2
+
+q1_v1_resumen <- sprintf(
+  "%s %s",
+  fmt_pct(q1_v1_beta11$VE_tardia_mediana_pct),
+  fmt_hpdi(q1_v1_beta11$HPDI_inf_pct, q1_v1_beta11$HPDI_sup_pct)
+)
+q1_v2_resumen <- sprintf(
+  "%s %s",
+  fmt_pct(q1_v2_beta11$VE_tardia_mediana_pct),
+  fmt_hpdi(q1_v2_beta11$HPDI_inf_pct, q1_v2_beta11$HPDI_sup_pct)
+)
+q1_prob_v1 <- fmt_pct(q1_v1_beta11$prob_tardia_menor_0_90_pct)
+q1_prob_v2 <- ifelse(
+  round(q1_v2_beta11$prob_tardia_menor_0_90_pct, 1) == 100,
+  "100%",
+  fmt_pct(q1_v2_beta11$prob_tardia_menor_0_90_pct)
+)
+
+q2_v1_resumen <- sprintf(
+  "%s %s",
+  fmt_pct(q2_v1$VE_mediana_pct),
+  fmt_hpdi(q2_v1$HPDI_inf_pct, q2_v1$HPDI_sup_pct)
+)
+q2_v2_resumen <- sprintf(
+  "%s %s",
+  fmt_pct(q2_v2$VE_mediana_pct),
+  fmt_hpdi(q2_v2$HPDI_inf_pct, q2_v2$HPDI_sup_pct)
+)
+q2_prob_v1 <- fmt_pct(q2_v1$prob_VE_mayor_50_pct)
+q2_prob_v2 <- fmt_pct(q2_v2$prob_VE_mayor_50_pct)
+```
+
 # Discusión ética y límites del reanálisis
 
-El reanálisis no invalida el estudio original. Sí muestra que el estudio es
-perfectible y que algunas conclusiones deben comunicarse con más cautela.
+El reanálisis con la cohorte ampliada no invalida el estudio original: mantiene
+la dirección posterior observada en v1, aunque actualiza magnitudes e
+intervalos. Para la Queja 1, la VE tardía en `271-365` días pasa de
+`r q1_v1_resumen` en v1 a `r q1_v2_resumen` en v2, y
+`P(VE_271-365 < VE_0-90 | datos)` pasa de `r q1_prob_v1` a `r q1_prob_v2`.
+La interpretación operativa se mantiene: riesgo residual y protección menor
+que en el bin temprano, sin extrapolar directamente a 14 meses porque el soporte
+observado llega a 365 días.
+
+Para la Queja 2, la celda `65+ x 181-270` pasa de `r q2_v1_resumen` en v1 a
+`r q2_v2_resumen` en v2. La probabilidad posterior de VE mayor a 50% baja de
+`r q2_prob_v1` a `r q2_prob_v2`, pero sigue sosteniendo una conclusión
+poblacional compatible con protección relevante y no absoluta.
+
+El DAG, el Paso 6 y el Paso 7 cumplen funciones distintas. El DAG explicita
+supuestos causales y estructura de identificación; no necesita una versión
+nueva por tener más filas. `vacunacion_previa` agrega información medida y puede
+funcionar como proxy parcial de historia de riesgo, pero no elimina el confusor
+latente `U`. Por eso la sensibilidad a confusor no medido del Paso 6 sigue
+siendo un límite común a v1 y v2: la cohorte ampliada aporta robustez
+descriptiva, no identificación causal plena. El WAIC original cumple la consigna
+metodológica de comparación predictiva; repetirlo para la cohorte ampliada sería
+accesorio y podría distraer de la respuesta operativa a las quejas.
 
 Límites concretos:
 
