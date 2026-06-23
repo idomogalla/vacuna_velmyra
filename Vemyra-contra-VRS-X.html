@@ -4265,10 +4265,19 @@ vacunación y calendario.</p>
 <div class="sourceCode" id="cb67"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb67-1"><a href="#cb67-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;</span><span class="sc">\n\n</span><span class="st">Conjuntos de ajuste identificados por `dagitty` para `V -&gt; Y`:</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>Conjuntos de ajuste identificados por <code>dagitty</code> para
 <code>V -&gt; Y</code>:</p>
-<div class="sourceCode" id="cb68"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb68-1"><a href="#cb68-1" tabindex="-1"></a>tabla_ajustes <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
-<span id="cb68-2"><a href="#cb68-2" tabindex="-1"></a>  <span class="at">salida =</span> <span class="fu">capture.output</span>(<span class="fu">adjustmentSets</span>(dag_velmyra, <span class="at">exposure =</span> <span class="st">&quot;V&quot;</span>, <span class="at">outcome =</span> <span class="st">&quot;Y&quot;</span>))</span>
+<div class="sourceCode" id="cb68"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb68-1"><a href="#cb68-1" tabindex="-1"></a>ajustes_VY <span class="ot">&lt;-</span> <span class="fu">capture.output</span>(</span>
+<span id="cb68-2"><a href="#cb68-2" tabindex="-1"></a>  <span class="fu">adjustmentSets</span>(dag_velmyra, <span class="at">exposure =</span> <span class="st">&quot;V&quot;</span>, <span class="at">outcome =</span> <span class="st">&quot;Y&quot;</span>)</span>
 <span id="cb68-3"><a href="#cb68-3" tabindex="-1"></a>)</span>
-<span id="cb68-4"><a href="#cb68-4" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(tabla_ajustes, <span class="at">col.names =</span> <span class="st">&quot;Resultado&quot;</span>)</span></code></pre></div>
+<span id="cb68-4"><a href="#cb68-4" tabindex="-1"></a></span>
+<span id="cb68-5"><a href="#cb68-5" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">length</span>(ajustes_VY) <span class="sc">==</span> <span class="dv">0</span>) {</span>
+<span id="cb68-6"><a href="#cb68-6" tabindex="-1"></a>  tabla_ajustes <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
+<span id="cb68-7"><a href="#cb68-7" tabindex="-1"></a>    <span class="at">Resultado =</span> <span class="st">&quot;No hay un conjunto de ajuste medido suficiente bajo este DAG.&quot;</span></span>
+<span id="cb68-8"><a href="#cb68-8" tabindex="-1"></a>  )</span>
+<span id="cb68-9"><a href="#cb68-9" tabindex="-1"></a>} <span class="cf">else</span> {</span>
+<span id="cb68-10"><a href="#cb68-10" tabindex="-1"></a>  tabla_ajustes <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(<span class="at">Resultado =</span> ajustes_VY)</span>
+<span id="cb68-11"><a href="#cb68-11" tabindex="-1"></a>}</span>
+<span id="cb68-12"><a href="#cb68-12" tabindex="-1"></a></span>
+<span id="cb68-13"><a href="#cb68-13" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(tabla_ajustes)</span></code></pre></div>
 <table>
 <thead>
 <tr class="header">
@@ -4276,90 +4285,110 @@ vacunación y calendario.</p>
 </tr>
 </thead>
 <tbody>
+<tr class="odd">
+<td align="left">No hay un conjunto de ajuste medido suficiente bajo
+este DAG.</td>
+</tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb69"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb69-1"><a href="#cb69-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;</span><span class="sc">\n\n</span><span class="st">Interpretación: `No vacunada` corresponde a `V = 0` en este DAG; no es un nodo causal nuevo. `T` representa `dias_desde_vacunacion`, una variable temporal medida y derivada de la vacunación. Por eso aparece como descendiente de `V`, relevante para waning y composición calendario-tiempo, pero no se ajusta como confusor basal del efecto binario de vacunarse.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
-<p>Interpretación: <code>No vacunada</code> corresponde a
-<code>V = 0</code> en este DAG; no es un nodo causal nuevo.
-<code>T</code> representa <code>dias_desde_vacunacion</code>, una
-variable temporal medida y derivada de la vacunación. Por eso aparece
-como descendiente de <code>V</code>, relevante para waning y composición
-calendario-tiempo, pero no se ajusta como confusor basal del efecto
-binario de vacunarse.</p>
-<div class="sourceCode" id="cb70"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb70-1"><a href="#cb70-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;La flecha `edad -&gt; T` representa priorización y calendario de vacunación por edad: distintos grupos etarios pueden quedar con distribuciones diferentes de días desde vacunación.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
-<p>La flecha <code>edad -&gt; T</code> representa priorización y
+<div class="sourceCode" id="cb69"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb69-1"><a href="#cb69-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;</span><span class="sc">\n\n</span><span class="st">El DAG se lee en dos niveles. Para la pregunta causal principal, `V -&gt; Y` representa el efecto binario de vacunarse sobre hospitalización. Las covariables medidas (edad, sexo, comorbilidad y centro) pueden afectar tanto la probabilidad de vacunarse como el riesgo de hospitalización, por lo que forman caminos de confusión del tipo `C -&gt; V` y `C -&gt; Y`.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<p>El DAG se lee en dos niveles. Para la pregunta causal principal,
+<code>V -&gt; Y</code> representa el efecto binario de vacunarse sobre
+hospitalización. Las covariables medidas (edad, sexo, comorbilidad y
+centro) pueden afectar tanto la probabilidad de vacunarse como el riesgo
+de hospitalización, por lo que forman caminos de confusión del tipo
+<code>C -&gt; V</code> y <code>C -&gt; Y</code>.</p>
+<div class="sourceCode" id="cb70"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb70-1"><a href="#cb70-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;En términos de los patrones básicos del DAG, las covariables medidas y `U` forman bifurcaciones o forks de confusión; `V -&gt; T -&gt; Y` es una cadena o pipe asociada al mecanismo temporal; y no se introduce ningún collider como variable de ajuste.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<p>En términos de los patrones básicos del DAG, las covariables medidas
+y <code>U</code> forman bifurcaciones o forks de confusión;
+<code>V -&gt; T -&gt; Y</code> es una cadena o pipe asociada al
+mecanismo temporal; y no se introduce ningún collider como variable de
+ajuste.</p>
+<div class="sourceCode" id="cb71"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb71-1"><a href="#cb71-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;El nodo `U` representa estado de salud previo, acceso al sistema u otros factores no observados vinculados al sesgo del vacunado sano. Este nodo abre el camino de puerta trasera `V &lt;- U -&gt; Y`. Como `U` no está observado, el ajuste por edad, sexo, comorbilidad y centro reduce la confusión observable, pero no identifica por completo el efecto causal de `V` sobre `Y`.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<p>El nodo <code>U</code> representa estado de salud previo, acceso al
+sistema u otros factores no observados vinculados al sesgo del vacunado
+sano. Este nodo abre el camino de puerta trasera
+<code>V &lt;- U -&gt; Y</code>. Como <code>U</code> no está observado,
+el ajuste por edad, sexo, comorbilidad y centro reduce la confusión
+observable, pero no identifica por completo el efecto causal de
+<code>V</code> sobre <code>Y</code>.</p>
+<div class="sourceCode" id="cb72"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb72-1"><a href="#cb72-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Por eso, la ausencia de un conjunto de ajuste medido suficiente no debe leerse como un error del DAG, sino como la razón causal para realizar el análisis de sensibilidad del Paso 6. Ese paso cuantifica cuánto podría desplazarse el efecto observado si existe confusión residual por `U`.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<p>Por eso, la ausencia de un conjunto de ajuste medido suficiente no
+debe leerse como un error del DAG, sino como la razón causal para
+realizar el análisis de sensibilidad del Paso 6. Ese paso cuantifica
+cuánto podría desplazarse el efecto observado si existe confusión
+residual por <code>U</code>.</p>
+<div class="sourceCode" id="cb73"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb73-1"><a href="#cb73-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;El nodo `T` representa `dias_desde_vacunacion`. No es un confusor basal del contraste vacunada vs no vacunada: es una variable temporal derivada de la vacunación. Por eso aparece como descendiente de `V`, útil para razonar sobre waning y composición edad-tiempo/calendario, pero no se ajusta como si fuera una covariable pretratamiento en el efecto binario de vacunarse.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<p>El nodo <code>T</code> representa <code>dias_desde_vacunacion</code>.
+No es un confusor basal del contraste vacunada vs no vacunada: es una
+variable temporal derivada de la vacunación. Por eso aparece como
+descendiente de <code>V</code>, útil para razonar sobre waning y
+composición edad-tiempo/calendario, pero no se ajusta como si fuera una
+covariable pretratamiento en el efecto binario de vacunarse.</p>
+<div class="sourceCode" id="cb74"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb74-1"><a href="#cb74-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;La flecha `edad -&gt; T` resume la priorización y el calendario de vacunación por edad: distintos grupos etarios pueden quedar con distribuciones diferentes de días desde vacunación. Esta parte del DAG conecta con los análisis estratificados de los Pasos 3 y 4, no con una identificación causal plena del waning.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<p>La flecha <code>edad -&gt; T</code> resume la priorización y el
 calendario de vacunación por edad: distintos grupos etarios pueden
-quedar con distribuciones diferentes de días desde vacunación.</p>
-<div class="sourceCode" id="cb71"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb71-1"><a href="#cb71-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;`U` (`estado de salud previo / sesgo del vacunado sano`) abre un camino de puerta trasera `V &lt;- U -&gt; Y`. Como `U` no está observado, edad, sexo, comorbilidad y centro no cierran completamente ese camino; el ajuste medido reduce confusión observable, pero no identifica por completo el sesgo residual.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
-<p><code>U</code>
-(<code>estado de salud previo / sesgo del vacunado sano</code>) abre un
-camino de puerta trasera <code>V &lt;- U -&gt; Y</code>. Como
-<code>U</code> no está observado, edad, sexo, comorbilidad y centro no
-cierran completamente ese camino; el ajuste medido reduce confusión
-observable, pero no identifica por completo el sesgo residual.</p>
-<div class="sourceCode" id="cb72"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb72-1"><a href="#cb72-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Dirección del sesgo: si `U` mejora la salud basal y también aumenta la probabilidad de vacunarse, el sesgo infla la VE observada. El modelo oficial ajusta por edad, sexo, comorbilidad y centro; el `quap` simplificado usa `edad_cat`, sexo y comorbilidad. En ambos casos, `U` residual justifica la sensibilidad del Paso 6.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+quedar con distribuciones diferentes de días desde vacunación. Esta
+parte del DAG conecta con los análisis estratificados de los Pasos 3 y
+4, no con una identificación causal plena del waning.</p>
+<div class="sourceCode" id="cb75"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb75-1"><a href="#cb75-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Dirección del sesgo: si `U` mejora la salud basal y también aumenta la probabilidad de vacunarse, la VE observada queda inflada. En ese caso, el efecto causal corregido sería menos protector que el estimado crudo o ajustado solo por covariables medidas.</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>Dirección del sesgo: si <code>U</code> mejora la salud basal y
-también aumenta la probabilidad de vacunarse, el sesgo infla la VE
-observada. El modelo oficial ajusta por edad, sexo, comorbilidad y
-centro; el <code>quap</code> simplificado usa <code>edad_cat</code>,
-sexo y comorbilidad. En ambos casos, <code>U</code> residual justifica
-la sensibilidad del Paso 6.</p>
-<div class="sourceCode" id="cb73"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb73-1"><a href="#cb73-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Paso 6 cuantifica el impacto sobre el contraste vacunados vs no vacunados.</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div>
-<p>Paso 6 cuantifica el impacto sobre el contraste vacunados vs no
-vacunados.</p>
+también aumenta la probabilidad de vacunarse, la VE observada queda
+inflada. En ese caso, el efecto causal corregido sería menos protector
+que el estimado crudo o ajustado solo por covariables medidas.</p>
 </div>
 <div id="paso-6-sensibilidad-a-confusor-no-medido-vía-paramétrica-bayesiana" class="section level1">
 <h1>PASO 6 — Sensibilidad a confusor no medido (vía paramétrica
 bayesiana)</h1>
-<div class="sourceCode" id="cb74"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb74-1"><a href="#cb74-1" tabindex="-1"></a><span class="co"># β_causal = β_observado - δ</span></span>
-<span id="cb74-2"><a href="#cb74-2" tabindex="-1"></a><span class="co"># δ ~ N(mu_delta, sigma_delta²)</span></span>
-<span id="cb74-3"><a href="#cb74-3" tabindex="-1"></a><span class="co"># Por composición gaussiana:</span></span>
-<span id="cb74-4"><a href="#cb74-4" tabindex="-1"></a><span class="co">#   β_causal ~ N(β_obs - mu_delta, sigma_V² + sigma_delta²)</span></span>
-<span id="cb74-5"><a href="#cb74-5" tabindex="-1"></a><span class="co"># Con esta parametrización, δ &lt; 0 representa sesgo del vacunado sano:</span></span>
-<span id="cb74-6"><a href="#cb74-6" tabindex="-1"></a><span class="co"># β_obs queda más negativo/protector y β_causal = β_obs - δ vuelve el efecto</span></span>
-<span id="cb74-7"><a href="#cb74-7" tabindex="-1"></a><span class="co"># menos protector.</span></span>
-<span id="cb74-8"><a href="#cb74-8" tabindex="-1"></a></span>
-<span id="cb74-9"><a href="#cb74-9" tabindex="-1"></a>beta_obs   <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(<span class="fu">coef</span>(modelo_quap_debil)[<span class="st">&quot;bV&quot;</span>])</span>
-<span id="cb74-10"><a href="#cb74-10" tabindex="-1"></a>sigma_V    <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(<span class="fu">sqrt</span>(<span class="fu">vcov</span>(modelo_quap_debil)[<span class="st">&quot;bV&quot;</span>, <span class="st">&quot;bV&quot;</span>]))</span>
-<span id="cb74-11"><a href="#cb74-11" tabindex="-1"></a>OR_obs_val <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(<span class="fu">exp</span>(<span class="fu">coef</span>(modelo_quap_debil)[<span class="st">&quot;bV&quot;</span>]))</span>
-<span id="cb74-12"><a href="#cb74-12" tabindex="-1"></a></span>
-<span id="cb74-13"><a href="#cb74-13" tabindex="-1"></a><span class="co"># Tres priors sobre δ (cuánto sesga U al coeficiente de la vacuna)</span></span>
-<span id="cb74-14"><a href="#cb74-14" tabindex="-1"></a><span class="co"># Sesgo del vacunado sano -&gt; δ &lt; 0 (infla la protección observada).</span></span>
-<span id="cb74-15"><a href="#cb74-15" tabindex="-1"></a></span>
-<span id="cb74-16"><a href="#cb74-16" tabindex="-1"></a>priors_delta <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
-<span id="cb74-17"><a href="#cb74-17" tabindex="-1"></a>  <span class="at">debil    =</span> <span class="fu">list</span>(<span class="at">mu =</span> <span class="sc">-</span><span class="fl">0.10</span>, <span class="at">sd =</span> <span class="fl">0.10</span>, <span class="at">label =</span> <span class="st">&quot;Débil    (σ=0.10): confusor pequeño&quot;</span>),</span>
-<span id="cb74-18"><a href="#cb74-18" tabindex="-1"></a>  <span class="at">moderado =</span> <span class="fu">list</span>(<span class="at">mu =</span> <span class="sc">-</span><span class="fl">0.20</span>, <span class="at">sd =</span> <span class="fl">0.20</span>, <span class="at">label =</span> <span class="st">&quot;Moderado (σ=0.20): confusor moderado&quot;</span>),</span>
-<span id="cb74-19"><a href="#cb74-19" tabindex="-1"></a>  <span class="at">agresivo =</span> <span class="fu">list</span>(<span class="at">mu =</span> <span class="sc">-</span><span class="fl">0.40</span>, <span class="at">sd =</span> <span class="fl">0.30</span>, <span class="at">label =</span> <span class="st">&quot;Agresivo (σ=0.30): sesgo vacunado sano fuerte&quot;</span>)</span>
-<span id="cb74-20"><a href="#cb74-20" tabindex="-1"></a>)</span>
-<span id="cb74-21"><a href="#cb74-21" tabindex="-1"></a></span>
-<span id="cb74-22"><a href="#cb74-22" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;`beta_observado` (MAP): %.3f</span><span class="sc">\n\n</span><span class="st">&quot;</span>, beta_obs))</span></code></pre></div>
+<div class="sourceCode" id="cb76"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb76-1"><a href="#cb76-1" tabindex="-1"></a><span class="co"># β_causal = β_observado - δ</span></span>
+<span id="cb76-2"><a href="#cb76-2" tabindex="-1"></a><span class="co"># δ ~ N(mu_delta, sigma_delta²)</span></span>
+<span id="cb76-3"><a href="#cb76-3" tabindex="-1"></a><span class="co"># Por composición gaussiana:</span></span>
+<span id="cb76-4"><a href="#cb76-4" tabindex="-1"></a><span class="co">#   β_causal ~ N(β_obs - mu_delta, sigma_V² + sigma_delta²)</span></span>
+<span id="cb76-5"><a href="#cb76-5" tabindex="-1"></a><span class="co"># Con esta parametrización, δ &lt; 0 representa sesgo del vacunado sano:</span></span>
+<span id="cb76-6"><a href="#cb76-6" tabindex="-1"></a><span class="co"># β_obs queda más negativo/protector y β_causal = β_obs - δ vuelve el efecto</span></span>
+<span id="cb76-7"><a href="#cb76-7" tabindex="-1"></a><span class="co"># menos protector.</span></span>
+<span id="cb76-8"><a href="#cb76-8" tabindex="-1"></a></span>
+<span id="cb76-9"><a href="#cb76-9" tabindex="-1"></a>beta_obs   <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(<span class="fu">coef</span>(modelo_quap_debil)[<span class="st">&quot;bV&quot;</span>])</span>
+<span id="cb76-10"><a href="#cb76-10" tabindex="-1"></a>sigma_V    <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(<span class="fu">sqrt</span>(<span class="fu">vcov</span>(modelo_quap_debil)[<span class="st">&quot;bV&quot;</span>, <span class="st">&quot;bV&quot;</span>]))</span>
+<span id="cb76-11"><a href="#cb76-11" tabindex="-1"></a>OR_obs_val <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(<span class="fu">exp</span>(<span class="fu">coef</span>(modelo_quap_debil)[<span class="st">&quot;bV&quot;</span>]))</span>
+<span id="cb76-12"><a href="#cb76-12" tabindex="-1"></a></span>
+<span id="cb76-13"><a href="#cb76-13" tabindex="-1"></a><span class="co"># Tres priors sobre δ (cuánto sesga U al coeficiente de la vacuna)</span></span>
+<span id="cb76-14"><a href="#cb76-14" tabindex="-1"></a><span class="co"># Sesgo del vacunado sano -&gt; δ &lt; 0 (infla la protección observada).</span></span>
+<span id="cb76-15"><a href="#cb76-15" tabindex="-1"></a></span>
+<span id="cb76-16"><a href="#cb76-16" tabindex="-1"></a>priors_delta <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb76-17"><a href="#cb76-17" tabindex="-1"></a>  <span class="at">debil    =</span> <span class="fu">list</span>(<span class="at">mu =</span> <span class="sc">-</span><span class="fl">0.10</span>, <span class="at">sd =</span> <span class="fl">0.10</span>, <span class="at">label =</span> <span class="st">&quot;Débil    (σ=0.10): confusor pequeño&quot;</span>),</span>
+<span id="cb76-18"><a href="#cb76-18" tabindex="-1"></a>  <span class="at">moderado =</span> <span class="fu">list</span>(<span class="at">mu =</span> <span class="sc">-</span><span class="fl">0.20</span>, <span class="at">sd =</span> <span class="fl">0.20</span>, <span class="at">label =</span> <span class="st">&quot;Moderado (σ=0.20): confusor moderado&quot;</span>),</span>
+<span id="cb76-19"><a href="#cb76-19" tabindex="-1"></a>  <span class="at">agresivo =</span> <span class="fu">list</span>(<span class="at">mu =</span> <span class="sc">-</span><span class="fl">0.40</span>, <span class="at">sd =</span> <span class="fl">0.30</span>, <span class="at">label =</span> <span class="st">&quot;Agresivo (σ=0.30): sesgo vacunado sano fuerte&quot;</span>)</span>
+<span id="cb76-20"><a href="#cb76-20" tabindex="-1"></a>)</span>
+<span id="cb76-21"><a href="#cb76-21" tabindex="-1"></a></span>
+<span id="cb76-22"><a href="#cb76-22" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;`beta_observado` (MAP): %.3f</span><span class="sc">\n\n</span><span class="st">&quot;</span>, beta_obs))</span></code></pre></div>
 <p><code>beta_observado</code> (MAP): -1.251</p>
-<div class="sourceCode" id="cb75"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb75-1"><a href="#cb75-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;Sigma posterior: %.3f</span><span class="sc">\n\n</span><span class="st">&quot;</span>, sigma_V))</span></code></pre></div>
+<div class="sourceCode" id="cb77"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb77-1"><a href="#cb77-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;Sigma posterior: %.3f</span><span class="sc">\n\n</span><span class="st">&quot;</span>, sigma_V))</span></code></pre></div>
 <p>Sigma posterior: 0.148</p>
-<div class="sourceCode" id="cb76"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb76-1"><a href="#cb76-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Contraste afectado por `U`: vacunados vs no vacunados.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb78"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb78-1"><a href="#cb78-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Contraste afectado por `U`: vacunados vs no vacunados.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>Contraste afectado por <code>U</code>: vacunados vs no vacunados.</p>
-<div class="sourceCode" id="cb77"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb77-1"><a href="#cb77-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Este es un análisis de desplazamiento en escala log-OR: `beta_causal = beta_obs - delta`. No modela explícitamente la prevalencia de `U` ni su fuerza de asociación con `V` e `Y`.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb79"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb79-1"><a href="#cb79-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Este es un análisis de desplazamiento en escala log-OR: `beta_causal = beta_obs - delta`. No modela explícitamente la prevalencia de `U` ni su fuerza de asociación con `V` e `Y`.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>Este es un análisis de desplazamiento en escala log-OR:
 <code>beta_causal = beta_obs - delta</code>. No modela explícitamente la
 prevalencia de <code>U</code> ni su fuerza de asociación con
 <code>V</code> e <code>Y</code>.</p>
-<div class="sourceCode" id="cb78"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb78-1"><a href="#cb78-1" tabindex="-1"></a>tabla_priors_delta <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
-<span id="cb78-2"><a href="#cb78-2" tabindex="-1"></a>  <span class="at">escenario =</span> <span class="fu">names</span>(priors_delta),</span>
-<span id="cb78-3"><a href="#cb78-3" tabindex="-1"></a>  <span class="at">mu_delta =</span> purrr<span class="sc">::</span><span class="fu">map_dbl</span>(priors_delta, <span class="st">&quot;mu&quot;</span>),</span>
-<span id="cb78-4"><a href="#cb78-4" tabindex="-1"></a>  <span class="at">sd_delta =</span> purrr<span class="sc">::</span><span class="fu">map_dbl</span>(priors_delta, <span class="st">&quot;sd&quot;</span>),</span>
-<span id="cb78-5"><a href="#cb78-5" tabindex="-1"></a>  <span class="at">exp_mu_delta =</span> <span class="fu">exp</span>(mu_delta)</span>
-<span id="cb78-6"><a href="#cb78-6" tabindex="-1"></a>)</span>
-<span id="cb78-7"><a href="#cb78-7" tabindex="-1"></a></span>
-<span id="cb78-8"><a href="#cb78-8" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Priors usados para `delta` e interpretación como factor multiplicativo `exp(mu_delta)` sobre el OR observado:</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb80"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb80-1"><a href="#cb80-1" tabindex="-1"></a>tabla_priors_delta <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
+<span id="cb80-2"><a href="#cb80-2" tabindex="-1"></a>  <span class="at">escenario =</span> <span class="fu">names</span>(priors_delta),</span>
+<span id="cb80-3"><a href="#cb80-3" tabindex="-1"></a>  <span class="at">mu_delta =</span> purrr<span class="sc">::</span><span class="fu">map_dbl</span>(priors_delta, <span class="st">&quot;mu&quot;</span>),</span>
+<span id="cb80-4"><a href="#cb80-4" tabindex="-1"></a>  <span class="at">sd_delta =</span> purrr<span class="sc">::</span><span class="fu">map_dbl</span>(priors_delta, <span class="st">&quot;sd&quot;</span>),</span>
+<span id="cb80-5"><a href="#cb80-5" tabindex="-1"></a>  <span class="at">exp_mu_delta =</span> <span class="fu">exp</span>(mu_delta)</span>
+<span id="cb80-6"><a href="#cb80-6" tabindex="-1"></a>)</span>
+<span id="cb80-7"><a href="#cb80-7" tabindex="-1"></a></span>
+<span id="cb80-8"><a href="#cb80-8" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Priors usados para `delta` e interpretación como factor multiplicativo `exp(mu_delta)` sobre el OR observado:</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>Priors usados para <code>delta</code> e interpretación como factor
 multiplicativo <code>exp(mu_delta)</code> sobre el OR observado:</p>
-<div class="sourceCode" id="cb79"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb79-1"><a href="#cb79-1" tabindex="-1"></a>tabla_priors_delta <span class="sc">%&gt;%</span></span>
-<span id="cb79-2"><a href="#cb79-2" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
-<span id="cb79-3"><a href="#cb79-3" tabindex="-1"></a>    <span class="at">mu_delta =</span> <span class="fu">round</span>(mu_delta, <span class="dv">2</span>),</span>
-<span id="cb79-4"><a href="#cb79-4" tabindex="-1"></a>    <span class="at">sd_delta =</span> <span class="fu">round</span>(sd_delta, <span class="dv">2</span>),</span>
-<span id="cb79-5"><a href="#cb79-5" tabindex="-1"></a>    <span class="at">exp_mu_delta =</span> <span class="fu">round</span>(exp_mu_delta, <span class="dv">2</span>)</span>
-<span id="cb79-6"><a href="#cb79-6" tabindex="-1"></a>  ) <span class="sc">%&gt;%</span></span>
-<span id="cb79-7"><a href="#cb79-7" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>()</span></code></pre></div>
+<div class="sourceCode" id="cb81"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb81-1"><a href="#cb81-1" tabindex="-1"></a>tabla_priors_delta <span class="sc">%&gt;%</span></span>
+<span id="cb81-2"><a href="#cb81-2" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
+<span id="cb81-3"><a href="#cb81-3" tabindex="-1"></a>    <span class="at">mu_delta =</span> <span class="fu">round</span>(mu_delta, <span class="dv">2</span>),</span>
+<span id="cb81-4"><a href="#cb81-4" tabindex="-1"></a>    <span class="at">sd_delta =</span> <span class="fu">round</span>(sd_delta, <span class="dv">2</span>),</span>
+<span id="cb81-5"><a href="#cb81-5" tabindex="-1"></a>    <span class="at">exp_mu_delta =</span> <span class="fu">round</span>(exp_mu_delta, <span class="dv">2</span>)</span>
+<span id="cb81-6"><a href="#cb81-6" tabindex="-1"></a>  ) <span class="sc">%&gt;%</span></span>
+<span id="cb81-7"><a href="#cb81-7" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>()</span></code></pre></div>
 <table>
 <thead>
 <tr class="header">
@@ -4390,36 +4419,36 @@ multiplicativo <code>exp(mu_delta)</code> sobre el OR observado:</p>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb80"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb80-1"><a href="#cb80-1" tabindex="-1"></a>resultados_sens <span class="ot">&lt;-</span> <span class="fu">map_dfr</span>(<span class="fu">names</span>(priors_delta), <span class="cf">function</span>(nm) {</span>
-<span id="cb80-2"><a href="#cb80-2" tabindex="-1"></a>  pd <span class="ot">&lt;-</span> priors_delta[[nm]]</span>
-<span id="cb80-3"><a href="#cb80-3" tabindex="-1"></a></span>
-<span id="cb80-4"><a href="#cb80-4" tabindex="-1"></a>  <span class="co"># Muestrear β_causal por composición gaussiana:</span></span>
-<span id="cb80-5"><a href="#cb80-5" tabindex="-1"></a>  <span class="co"># β_causal = β_obs_s - δ_s, donde β_obs_s ~ posterior quap y δ_s ~ prior del sesgo</span></span>
-<span id="cb80-6"><a href="#cb80-6" tabindex="-1"></a></span>
-<span id="cb80-7"><a href="#cb80-7" tabindex="-1"></a>  beta_obs_s     <span class="ot">&lt;-</span> samp_debil<span class="sc">$</span>bV                      <span class="co"># muestras de la posterior quap</span></span>
-<span id="cb80-8"><a href="#cb80-8" tabindex="-1"></a>  delta_s        <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(N_samp, pd<span class="sc">$</span>mu, pd<span class="sc">$</span>sd)</span>
-<span id="cb80-9"><a href="#cb80-9" tabindex="-1"></a>  beta_causal_s  <span class="ot">&lt;-</span> beta_obs_s <span class="sc">-</span> delta_s</span>
-<span id="cb80-10"><a href="#cb80-10" tabindex="-1"></a>  VE_causal_s    <span class="ot">&lt;-</span> <span class="dv">1</span> <span class="sc">-</span> <span class="fu">exp</span>(beta_causal_s)</span>
-<span id="cb80-11"><a href="#cb80-11" tabindex="-1"></a></span>
-<span id="cb80-12"><a href="#cb80-12" tabindex="-1"></a>  hp <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(<span class="fu">HPDI</span>(VE_causal_s, <span class="at">prob =</span> <span class="fl">0.95</span>))</span>
-<span id="cb80-13"><a href="#cb80-13" tabindex="-1"></a></span>
-<span id="cb80-14"><a href="#cb80-14" tabindex="-1"></a>  <span class="fu">data.frame</span>(</span>
-<span id="cb80-15"><a href="#cb80-15" tabindex="-1"></a>    <span class="at">prior    =</span> nm,</span>
-<span id="cb80-16"><a href="#cb80-16" tabindex="-1"></a>    <span class="at">label    =</span> pd<span class="sc">$</span>label,</span>
-<span id="cb80-17"><a href="#cb80-17" tabindex="-1"></a>    <span class="at">mu_delta =</span> pd<span class="sc">$</span>mu,</span>
-<span id="cb80-18"><a href="#cb80-18" tabindex="-1"></a>    <span class="at">sd_delta =</span> pd<span class="sc">$</span>sd,</span>
-<span id="cb80-19"><a href="#cb80-19" tabindex="-1"></a>    <span class="at">VE_mediana =</span> <span class="fu">as.numeric</span>(<span class="fu">median</span>(VE_causal_s)),</span>
-<span id="cb80-20"><a href="#cb80-20" tabindex="-1"></a>    <span class="at">HPDI_lo    =</span> hp[<span class="dv">1</span>],</span>
-<span id="cb80-21"><a href="#cb80-21" tabindex="-1"></a>    <span class="at">HPDI_hi    =</span> hp[<span class="dv">2</span>]</span>
-<span id="cb80-22"><a href="#cb80-22" tabindex="-1"></a>  )</span>
-<span id="cb80-23"><a href="#cb80-23" tabindex="-1"></a>})</span>
-<span id="cb80-24"><a href="#cb80-24" tabindex="-1"></a></span>
-<span id="cb80-25"><a href="#cb80-25" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;</span><span class="sc">\n\n</span><span class="st">VE ajustada por sensibilidad bajo estos priors:</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb82"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb82-1"><a href="#cb82-1" tabindex="-1"></a>resultados_sens <span class="ot">&lt;-</span> <span class="fu">map_dfr</span>(<span class="fu">names</span>(priors_delta), <span class="cf">function</span>(nm) {</span>
+<span id="cb82-2"><a href="#cb82-2" tabindex="-1"></a>  pd <span class="ot">&lt;-</span> priors_delta[[nm]]</span>
+<span id="cb82-3"><a href="#cb82-3" tabindex="-1"></a></span>
+<span id="cb82-4"><a href="#cb82-4" tabindex="-1"></a>  <span class="co"># Muestrear β_causal por composición gaussiana:</span></span>
+<span id="cb82-5"><a href="#cb82-5" tabindex="-1"></a>  <span class="co"># β_causal = β_obs_s - δ_s, donde β_obs_s ~ posterior quap y δ_s ~ prior del sesgo</span></span>
+<span id="cb82-6"><a href="#cb82-6" tabindex="-1"></a></span>
+<span id="cb82-7"><a href="#cb82-7" tabindex="-1"></a>  beta_obs_s     <span class="ot">&lt;-</span> samp_debil<span class="sc">$</span>bV                      <span class="co"># muestras de la posterior quap</span></span>
+<span id="cb82-8"><a href="#cb82-8" tabindex="-1"></a>  delta_s        <span class="ot">&lt;-</span> <span class="fu">rnorm</span>(N_samp, pd<span class="sc">$</span>mu, pd<span class="sc">$</span>sd)</span>
+<span id="cb82-9"><a href="#cb82-9" tabindex="-1"></a>  beta_causal_s  <span class="ot">&lt;-</span> beta_obs_s <span class="sc">-</span> delta_s</span>
+<span id="cb82-10"><a href="#cb82-10" tabindex="-1"></a>  VE_causal_s    <span class="ot">&lt;-</span> <span class="dv">1</span> <span class="sc">-</span> <span class="fu">exp</span>(beta_causal_s)</span>
+<span id="cb82-11"><a href="#cb82-11" tabindex="-1"></a></span>
+<span id="cb82-12"><a href="#cb82-12" tabindex="-1"></a>  hp <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(<span class="fu">HPDI</span>(VE_causal_s, <span class="at">prob =</span> <span class="fl">0.95</span>))</span>
+<span id="cb82-13"><a href="#cb82-13" tabindex="-1"></a></span>
+<span id="cb82-14"><a href="#cb82-14" tabindex="-1"></a>  <span class="fu">data.frame</span>(</span>
+<span id="cb82-15"><a href="#cb82-15" tabindex="-1"></a>    <span class="at">prior    =</span> nm,</span>
+<span id="cb82-16"><a href="#cb82-16" tabindex="-1"></a>    <span class="at">label    =</span> pd<span class="sc">$</span>label,</span>
+<span id="cb82-17"><a href="#cb82-17" tabindex="-1"></a>    <span class="at">mu_delta =</span> pd<span class="sc">$</span>mu,</span>
+<span id="cb82-18"><a href="#cb82-18" tabindex="-1"></a>    <span class="at">sd_delta =</span> pd<span class="sc">$</span>sd,</span>
+<span id="cb82-19"><a href="#cb82-19" tabindex="-1"></a>    <span class="at">VE_mediana =</span> <span class="fu">as.numeric</span>(<span class="fu">median</span>(VE_causal_s)),</span>
+<span id="cb82-20"><a href="#cb82-20" tabindex="-1"></a>    <span class="at">HPDI_lo    =</span> hp[<span class="dv">1</span>],</span>
+<span id="cb82-21"><a href="#cb82-21" tabindex="-1"></a>    <span class="at">HPDI_hi    =</span> hp[<span class="dv">2</span>]</span>
+<span id="cb82-22"><a href="#cb82-22" tabindex="-1"></a>  )</span>
+<span id="cb82-23"><a href="#cb82-23" tabindex="-1"></a>})</span>
+<span id="cb82-24"><a href="#cb82-24" tabindex="-1"></a></span>
+<span id="cb82-25"><a href="#cb82-25" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;</span><span class="sc">\n\n</span><span class="st">VE ajustada por sensibilidad bajo estos priors:</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>VE ajustada por sensibilidad bajo estos priors:</p>
-<div class="sourceCode" id="cb81"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb81-1"><a href="#cb81-1" tabindex="-1"></a>resultados_sens <span class="sc">%&gt;%</span></span>
-<span id="cb81-2"><a href="#cb81-2" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">c</span>(VE_mediana, HPDI_lo, HPDI_hi), <span class="sc">~</span> <span class="fu">round</span>(.x <span class="sc">*</span> <span class="dv">100</span>, <span class="dv">1</span>))) <span class="sc">%&gt;%</span></span>
-<span id="cb81-3"><a href="#cb81-3" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(label, VE_mediana, HPDI_lo, HPDI_hi) <span class="sc">%&gt;%</span></span>
-<span id="cb81-4"><a href="#cb81-4" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>()</span></code></pre></div>
+<div class="sourceCode" id="cb83"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb83-1"><a href="#cb83-1" tabindex="-1"></a>resultados_sens <span class="sc">%&gt;%</span></span>
+<span id="cb83-2"><a href="#cb83-2" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">c</span>(VE_mediana, HPDI_lo, HPDI_hi), <span class="sc">~</span> <span class="fu">round</span>(.x <span class="sc">*</span> <span class="dv">100</span>, <span class="dv">1</span>))) <span class="sc">%&gt;%</span></span>
+<span id="cb83-3"><a href="#cb83-3" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(label, VE_mediana, HPDI_lo, HPDI_hi) <span class="sc">%&gt;%</span></span>
+<span id="cb83-4"><a href="#cb83-4" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>()</span></code></pre></div>
 <table>
 <colgroup>
 <col width="63%" />
@@ -4456,25 +4485,25 @@ multiplicativo <code>exp(mu_delta)</code> sobre el OR observado:</p>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb82"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb82-1"><a href="#cb82-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;</span><span class="sc">\n\n</span><span class="st">Nota: incluso bajo el prior agresivo, que representa un sesgo del vacunado sano fuerte, la VE ajustada por sensibilidad permanece positiva para vacunados vs no vacunados bajo estos supuestos.</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb84"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb84-1"><a href="#cb84-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;</span><span class="sc">\n\n</span><span class="st">Nota: incluso bajo el prior agresivo, que representa un sesgo del vacunado sano fuerte, la VE ajustada por sensibilidad permanece positiva para vacunados vs no vacunados bajo estos supuestos.</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>Nota: incluso bajo el prior agresivo, que representa un sesgo del
 vacunado sano fuerte, la VE ajustada por sensibilidad permanece positiva
 para vacunados vs no vacunados bajo estos supuestos.</p>
-<div class="sourceCode" id="cb83"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb83-1"><a href="#cb83-1" tabindex="-1"></a><span class="co"># ---- E-value (Apéndice B, opcional) ----</span></span>
-<span id="cb83-2"><a href="#cb83-2" tabindex="-1"></a></span>
-<span id="cb83-3"><a href="#cb83-3" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;### E-value (complemento epidemiológico, Apéndice B)</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb85"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb85-1"><a href="#cb85-1" tabindex="-1"></a><span class="co"># ---- E-value (Apéndice B, opcional) ----</span></span>
+<span id="cb85-2"><a href="#cb85-2" tabindex="-1"></a></span>
+<span id="cb85-3"><a href="#cb85-3" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;### E-value (complemento epidemiológico, Apéndice B)</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <div id="e-value-complemento-epidemiológico-apéndice-b" class="section level3">
 <h3>E-value (complemento epidemiológico, Apéndice B)</h3>
-<div class="sourceCode" id="cb84"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb84-1"><a href="#cb84-1" tabindex="-1"></a>evalue <span class="ot">&lt;-</span> (<span class="dv">1</span> <span class="sc">/</span> OR_obs_val) <span class="sc">+</span> <span class="fu">sqrt</span>((<span class="dv">1</span> <span class="sc">/</span> OR_obs_val) <span class="sc">*</span> (<span class="dv">1</span> <span class="sc">/</span> OR_obs_val <span class="sc">-</span> <span class="dv">1</span>))</span>
-<span id="cb84-2"><a href="#cb84-2" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;OR observado = %.3f; E-value = %.2f.</span><span class="sc">\n\n</span><span class="st">&quot;</span>, OR_obs_val, evalue))</span></code></pre></div>
+<div class="sourceCode" id="cb86"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb86-1"><a href="#cb86-1" tabindex="-1"></a>evalue <span class="ot">&lt;-</span> (<span class="dv">1</span> <span class="sc">/</span> OR_obs_val) <span class="sc">+</span> <span class="fu">sqrt</span>((<span class="dv">1</span> <span class="sc">/</span> OR_obs_val) <span class="sc">*</span> (<span class="dv">1</span> <span class="sc">/</span> OR_obs_val <span class="sc">-</span> <span class="dv">1</span>))</span>
+<span id="cb86-2"><a href="#cb86-2" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;OR observado = %.3f; E-value = %.2f.</span><span class="sc">\n\n</span><span class="st">&quot;</span>, OR_obs_val, evalue))</span></code></pre></div>
 <p>OR observado = 0.286; E-value = 6.45.</p>
-<div class="sourceCode" id="cb85"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb85-1"><a href="#cb85-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;Interpretación: se necesitaría un `U` con RR &gt;= %.2f para ambas relaciones (`U -&gt; V` y `U -&gt; Y`) para explicar el efecto observado como espurio, bajo los supuestos del E-value. Como el evento es infrecuente, usamos el OR como aproximación al RR.</span><span class="sc">\n\n</span><span class="st">&quot;</span>, evalue))</span></code></pre></div>
+<div class="sourceCode" id="cb87"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb87-1"><a href="#cb87-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;Interpretación: se necesitaría un `U` con RR &gt;= %.2f para ambas relaciones (`U -&gt; V` y `U -&gt; Y`) para explicar el efecto observado como espurio, bajo los supuestos del E-value. Como el evento es infrecuente, usamos el OR como aproximación al RR.</span><span class="sc">\n\n</span><span class="st">&quot;</span>, evalue))</span></code></pre></div>
 <p>Interpretación: se necesitaría un <code>U</code> con RR &gt;= 6.45
 para ambas relaciones (<code>U -&gt; V</code> y <code>U -&gt; Y</code>)
 para explicar el efecto observado como espurio, bajo los supuestos del
 E-value. Como el evento es infrecuente, usamos el OR como aproximación
 al RR.</p>
-<div class="sourceCode" id="cb86"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb86-1"><a href="#cb86-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Esto indica que haría falta confusión fuerte para explicar el efecto observado bajo esos supuestos; no es evidencia de que esa confusión fuerte exista. El E-value es un complemento: no reemplaza la sensibilidad bayesiana anterior.</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb88"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb88-1"><a href="#cb88-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Esto indica que haría falta confusión fuerte para explicar el efecto observado bajo esos supuestos; no es evidencia de que esa confusión fuerte exista. El E-value es un complemento: no reemplaza la sensibilidad bayesiana anterior.</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>Esto indica que haría falta confusión fuerte para explicar el efecto
 observado bajo esos supuestos; no es evidencia de que esa confusión
 fuerte exista. El E-value es un complemento: no reemplaza la
@@ -4483,25 +4512,25 @@ sensibilidad bayesiana anterior.</p>
 </div>
 <div id="paso-7-comparación-de-modelos-con-waic-rethinkingwaic" class="section level1">
 <h1>PASO 7 — Comparación de modelos con WAIC (rethinking::WAIC)</h1>
-<div class="sourceCode" id="cb87"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb87-1"><a href="#cb87-1" tabindex="-1"></a><span class="co"># M1: modelo bayesiano simplificado del paso 2 (modelo_quap_debil):</span></span>
-<span id="cb87-2"><a href="#cb87-2" tabindex="-1"></a><span class="co">#     vacunada + edad_cat dummies + sexo + comorbilidad, sin centro.</span></span>
-<span id="cb87-3"><a href="#cb87-3" tabindex="-1"></a><span class="co"># M2: factor temporal único con cinco niveles:</span></span>
-<span id="cb87-4"><a href="#cb87-4" tabindex="-1"></a><span class="co">#     No vacunada, 0-90, 91-180, 181-270, 271-365.</span></span>
-<span id="cb87-5"><a href="#cb87-5" tabindex="-1"></a><span class="co"># &quot;No vacunada&quot; es la referencia conceptual. Los cuatro niveles restantes se</span></span>
-<span id="cb87-6"><a href="#cb87-6" tabindex="-1"></a><span class="co"># codifican como indicadores categóricos, no como puntaje ordinal. M2 reemplaza</span></span>
-<span id="cb87-7"><a href="#cb87-7" tabindex="-1"></a><span class="co"># vacunada por el factor temporal y mantiene las mismas covariables restantes.</span></span>
-<span id="cb87-8"><a href="#cb87-8" tabindex="-1"></a></span>
-<span id="cb87-9"><a href="#cb87-9" tabindex="-1"></a>bin_tiempo_m2 <span class="ot">&lt;-</span> <span class="fu">factor</span>(df<span class="sc">$</span>bin_tiempo, <span class="at">levels =</span> niveles_exposicion_tiempo)</span>
-<span id="cb87-10"><a href="#cb87-10" tabindex="-1"></a>bin_tiempo_idx_m2 <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(bin_tiempo_m2)</span>
-<span id="cb87-11"><a href="#cb87-11" tabindex="-1"></a></span>
-<span id="cb87-12"><a href="#cb87-12" tabindex="-1"></a>tabla_niveles_m2 <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
-<span id="cb87-13"><a href="#cb87-13" tabindex="-1"></a>  <span class="at">indice =</span> <span class="fu">seq_along</span>(niveles_exposicion_tiempo),</span>
-<span id="cb87-14"><a href="#cb87-14" tabindex="-1"></a>  <span class="at">bin_tiempo =</span> niveles_exposicion_tiempo</span>
-<span id="cb87-15"><a href="#cb87-15" tabindex="-1"></a>)</span>
-<span id="cb87-16"><a href="#cb87-16" tabindex="-1"></a></span>
-<span id="cb87-17"><a href="#cb87-17" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Codificación del factor temporal de M2:</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb89"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb89-1"><a href="#cb89-1" tabindex="-1"></a><span class="co"># M1: modelo bayesiano simplificado del paso 2 (modelo_quap_debil):</span></span>
+<span id="cb89-2"><a href="#cb89-2" tabindex="-1"></a><span class="co">#     vacunada + edad_cat dummies + sexo + comorbilidad, sin centro.</span></span>
+<span id="cb89-3"><a href="#cb89-3" tabindex="-1"></a><span class="co"># M2: factor temporal único con cinco niveles:</span></span>
+<span id="cb89-4"><a href="#cb89-4" tabindex="-1"></a><span class="co">#     No vacunada, 0-90, 91-180, 181-270, 271-365.</span></span>
+<span id="cb89-5"><a href="#cb89-5" tabindex="-1"></a><span class="co"># &quot;No vacunada&quot; es la referencia conceptual. Los cuatro niveles restantes se</span></span>
+<span id="cb89-6"><a href="#cb89-6" tabindex="-1"></a><span class="co"># codifican como indicadores categóricos, no como puntaje ordinal. M2 reemplaza</span></span>
+<span id="cb89-7"><a href="#cb89-7" tabindex="-1"></a><span class="co"># vacunada por el factor temporal y mantiene las mismas covariables restantes.</span></span>
+<span id="cb89-8"><a href="#cb89-8" tabindex="-1"></a></span>
+<span id="cb89-9"><a href="#cb89-9" tabindex="-1"></a>bin_tiempo_m2 <span class="ot">&lt;-</span> <span class="fu">factor</span>(df<span class="sc">$</span>bin_tiempo, <span class="at">levels =</span> niveles_exposicion_tiempo)</span>
+<span id="cb89-10"><a href="#cb89-10" tabindex="-1"></a>bin_tiempo_idx_m2 <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(bin_tiempo_m2)</span>
+<span id="cb89-11"><a href="#cb89-11" tabindex="-1"></a></span>
+<span id="cb89-12"><a href="#cb89-12" tabindex="-1"></a>tabla_niveles_m2 <span class="ot">&lt;-</span> tibble<span class="sc">::</span><span class="fu">tibble</span>(</span>
+<span id="cb89-13"><a href="#cb89-13" tabindex="-1"></a>  <span class="at">indice =</span> <span class="fu">seq_along</span>(niveles_exposicion_tiempo),</span>
+<span id="cb89-14"><a href="#cb89-14" tabindex="-1"></a>  <span class="at">bin_tiempo =</span> niveles_exposicion_tiempo</span>
+<span id="cb89-15"><a href="#cb89-15" tabindex="-1"></a>)</span>
+<span id="cb89-16"><a href="#cb89-16" tabindex="-1"></a></span>
+<span id="cb89-17"><a href="#cb89-17" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Codificación del factor temporal de M2:</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>Codificación del factor temporal de M2:</p>
-<div class="sourceCode" id="cb88"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb88-1"><a href="#cb88-1" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(tabla_niveles_m2)</span></code></pre></div>
+<div class="sourceCode" id="cb90"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb90-1"><a href="#cb90-1" tabindex="-1"></a>knitr<span class="sc">::</span><span class="fu">kable</span>(tabla_niveles_m2)</span></code></pre></div>
 <table>
 <thead>
 <tr class="header">
@@ -4532,70 +4561,70 @@ sensibilidad bayesiana anterior.</p>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb89"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb89-1"><a href="#cb89-1" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">identical</span>(<span class="fu">levels</span>(bin_tiempo_m2), niveles_exposicion_tiempo))</span>
-<span id="cb89-2"><a href="#cb89-2" tabindex="-1"></a></span>
-<span id="cb89-3"><a href="#cb89-3" tabindex="-1"></a>dat_m2 <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
-<span id="cb89-4"><a href="#cb89-4" tabindex="-1"></a>  <span class="at">hospitalizada =</span> <span class="fu">as.integer</span>(df<span class="sc">$</span>hospitalizada),</span>
-<span id="cb89-5"><a href="#cb89-5" tabindex="-1"></a>  <span class="at">nivel_0_90    =</span> <span class="fu">as.integer</span>(bin_tiempo_idx_m2 <span class="sc">==</span> <span class="fu">match</span>(<span class="st">&quot;0-90&quot;</span>, niveles_exposicion_tiempo)),</span>
-<span id="cb89-6"><a href="#cb89-6" tabindex="-1"></a>  <span class="at">nivel_91_180  =</span> <span class="fu">as.integer</span>(bin_tiempo_idx_m2 <span class="sc">==</span> <span class="fu">match</span>(<span class="st">&quot;91-180&quot;</span>, niveles_exposicion_tiempo)),</span>
-<span id="cb89-7"><a href="#cb89-7" tabindex="-1"></a>  <span class="at">nivel_181_270 =</span> <span class="fu">as.integer</span>(bin_tiempo_idx_m2 <span class="sc">==</span> <span class="fu">match</span>(<span class="st">&quot;181-270&quot;</span>, niveles_exposicion_tiempo)),</span>
-<span id="cb89-8"><a href="#cb89-8" tabindex="-1"></a>  <span class="at">nivel_271_365 =</span> <span class="fu">as.integer</span>(bin_tiempo_idx_m2 <span class="sc">==</span> <span class="fu">match</span>(<span class="st">&quot;271-365&quot;</span>, niveles_exposicion_tiempo)),</span>
-<span id="cb89-9"><a href="#cb89-9" tabindex="-1"></a>  <span class="at">edad_50_69    =</span> dat<span class="sc">$</span>edad_50_69,</span>
-<span id="cb89-10"><a href="#cb89-10" tabindex="-1"></a>  <span class="at">edad_70_plus  =</span> dat<span class="sc">$</span>edad_70_plus,</span>
-<span id="cb89-11"><a href="#cb89-11" tabindex="-1"></a>  <span class="at">sexo          =</span> dat<span class="sc">$</span>sexo,</span>
-<span id="cb89-12"><a href="#cb89-12" tabindex="-1"></a>  <span class="at">comorbilidad  =</span> dat<span class="sc">$</span>comorbilidad</span>
-<span id="cb89-13"><a href="#cb89-13" tabindex="-1"></a>)</span>
-<span id="cb89-14"><a href="#cb89-14" tabindex="-1"></a></span>
-<span id="cb89-15"><a href="#cb89-15" tabindex="-1"></a>modelo_quap_m2 <span class="ot">&lt;-</span> <span class="fu">quap</span>(</span>
-<span id="cb89-16"><a href="#cb89-16" tabindex="-1"></a>  <span class="fu">alist</span>(</span>
-<span id="cb89-17"><a href="#cb89-17" tabindex="-1"></a>    hospitalizada <span class="sc">~</span> <span class="fu">dbinom</span>(<span class="dv">1</span>, p),</span>
-<span id="cb89-18"><a href="#cb89-18" tabindex="-1"></a>    <span class="fu">logit</span>(p) <span class="ot">&lt;-</span> a <span class="sc">+</span></span>
-<span id="cb89-19"><a href="#cb89-19" tabindex="-1"></a>      bT_0_90    <span class="sc">*</span> nivel_0_90 <span class="sc">+</span></span>
-<span id="cb89-20"><a href="#cb89-20" tabindex="-1"></a>      bT_91_180  <span class="sc">*</span> nivel_91_180 <span class="sc">+</span></span>
-<span id="cb89-21"><a href="#cb89-21" tabindex="-1"></a>      bT_181_270 <span class="sc">*</span> nivel_181_270 <span class="sc">+</span></span>
-<span id="cb89-22"><a href="#cb89-22" tabindex="-1"></a>      bT_271_365 <span class="sc">*</span> nivel_271_365 <span class="sc">+</span></span>
-<span id="cb89-23"><a href="#cb89-23" tabindex="-1"></a>      bE50 <span class="sc">*</span> edad_50_69 <span class="sc">+</span></span>
-<span id="cb89-24"><a href="#cb89-24" tabindex="-1"></a>      bE70 <span class="sc">*</span> edad_70_plus <span class="sc">+</span></span>
-<span id="cb89-25"><a href="#cb89-25" tabindex="-1"></a>      bS <span class="sc">*</span> sexo <span class="sc">+</span></span>
-<span id="cb89-26"><a href="#cb89-26" tabindex="-1"></a>      bCom <span class="sc">*</span> comorbilidad,</span>
-<span id="cb89-27"><a href="#cb89-27" tabindex="-1"></a>    a <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
-<span id="cb89-28"><a href="#cb89-28" tabindex="-1"></a>    bT_0_90    <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
-<span id="cb89-29"><a href="#cb89-29" tabindex="-1"></a>    bT_91_180  <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
-<span id="cb89-30"><a href="#cb89-30" tabindex="-1"></a>    bT_181_270 <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
-<span id="cb89-31"><a href="#cb89-31" tabindex="-1"></a>    bT_271_365 <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
-<span id="cb89-32"><a href="#cb89-32" tabindex="-1"></a>    bE50 <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
-<span id="cb89-33"><a href="#cb89-33" tabindex="-1"></a>    bE70 <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
-<span id="cb89-34"><a href="#cb89-34" tabindex="-1"></a>    bS <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
-<span id="cb89-35"><a href="#cb89-35" tabindex="-1"></a>    bCom <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>)</span>
-<span id="cb89-36"><a href="#cb89-36" tabindex="-1"></a>  ),</span>
-<span id="cb89-37"><a href="#cb89-37" tabindex="-1"></a>  <span class="at">data =</span> dat_m2</span>
-<span id="cb89-38"><a href="#cb89-38" tabindex="-1"></a>)</span>
-<span id="cb89-39"><a href="#cb89-39" tabindex="-1"></a></span>
-<span id="cb89-40"><a href="#cb89-40" tabindex="-1"></a><span class="co"># rethinking::WAIC calcula automáticamente lppd, pWAIC y SE</span></span>
-<span id="cb89-41"><a href="#cb89-41" tabindex="-1"></a></span>
-<span id="cb89-42"><a href="#cb89-42" tabindex="-1"></a>waic_M1 <span class="ot">&lt;-</span> rethinking<span class="sc">::</span><span class="fu">WAIC</span>(modelo_quap_debil, <span class="at">n =</span> N_samp)</span>
-<span id="cb89-43"><a href="#cb89-43" tabindex="-1"></a>waic_M2 <span class="ot">&lt;-</span> rethinking<span class="sc">::</span><span class="fu">WAIC</span>(modelo_quap_m2,    <span class="at">n =</span> N_samp)</span>
-<span id="cb89-44"><a href="#cb89-44" tabindex="-1"></a></span>
-<span id="cb89-45"><a href="#cb89-45" tabindex="-1"></a>tabla_waic <span class="ot">&lt;-</span> <span class="cf">function</span>(x) {</span>
-<span id="cb89-46"><a href="#cb89-46" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">is.atomic</span>(x) <span class="sc">&amp;&amp;</span> <span class="sc">!</span><span class="fu">is.null</span>(<span class="fu">names</span>(x))) {</span>
-<span id="cb89-47"><a href="#cb89-47" tabindex="-1"></a>    <span class="fu">return</span>(tibble<span class="sc">::</span><span class="fu">tibble</span>(<span class="at">metrica =</span> <span class="fu">names</span>(x), <span class="at">valor =</span> <span class="fu">as.numeric</span>(x)))</span>
-<span id="cb89-48"><a href="#cb89-48" tabindex="-1"></a>  }</span>
-<span id="cb89-49"><a href="#cb89-49" tabindex="-1"></a></span>
-<span id="cb89-50"><a href="#cb89-50" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">is.list</span>(x) <span class="sc">&amp;&amp;</span> <span class="sc">!</span><span class="fu">is.null</span>(<span class="fu">names</span>(x))) {</span>
-<span id="cb89-51"><a href="#cb89-51" tabindex="-1"></a>    vals <span class="ot">&lt;-</span> x[<span class="fu">vapply</span>(x, <span class="cf">function</span>(z) <span class="fu">length</span>(z) <span class="sc">==</span> <span class="dv">1</span> <span class="sc">&amp;&amp;</span> <span class="fu">is.numeric</span>(z), <span class="fu">logical</span>(<span class="dv">1</span>))]</span>
-<span id="cb89-52"><a href="#cb89-52" tabindex="-1"></a>    <span class="cf">if</span> (<span class="fu">length</span>(vals) <span class="sc">&gt;</span> <span class="dv">0</span>) {</span>
-<span id="cb89-53"><a href="#cb89-53" tabindex="-1"></a>      <span class="fu">return</span>(tibble<span class="sc">::</span><span class="fu">tibble</span>(<span class="at">metrica =</span> <span class="fu">names</span>(vals), <span class="at">valor =</span> <span class="fu">as.numeric</span>(<span class="fu">unlist</span>(vals))))</span>
-<span id="cb89-54"><a href="#cb89-54" tabindex="-1"></a>    }</span>
-<span id="cb89-55"><a href="#cb89-55" tabindex="-1"></a>  }</span>
-<span id="cb89-56"><a href="#cb89-56" tabindex="-1"></a></span>
-<span id="cb89-57"><a href="#cb89-57" tabindex="-1"></a>  tibble<span class="sc">::</span><span class="fu">tibble</span>(<span class="at">resultado =</span> <span class="fu">capture.output</span>(<span class="fu">print</span>(x)))</span>
-<span id="cb89-58"><a href="#cb89-58" tabindex="-1"></a>}</span>
-<span id="cb89-59"><a href="#cb89-59" tabindex="-1"></a></span>
-<span id="cb89-60"><a href="#cb89-60" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;</span><span class="sc">\n\n</span><span class="st">M1 (agregado):</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb91"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb91-1"><a href="#cb91-1" tabindex="-1"></a><span class="fu">stopifnot</span>(<span class="fu">identical</span>(<span class="fu">levels</span>(bin_tiempo_m2), niveles_exposicion_tiempo))</span>
+<span id="cb91-2"><a href="#cb91-2" tabindex="-1"></a></span>
+<span id="cb91-3"><a href="#cb91-3" tabindex="-1"></a>dat_m2 <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb91-4"><a href="#cb91-4" tabindex="-1"></a>  <span class="at">hospitalizada =</span> <span class="fu">as.integer</span>(df<span class="sc">$</span>hospitalizada),</span>
+<span id="cb91-5"><a href="#cb91-5" tabindex="-1"></a>  <span class="at">nivel_0_90    =</span> <span class="fu">as.integer</span>(bin_tiempo_idx_m2 <span class="sc">==</span> <span class="fu">match</span>(<span class="st">&quot;0-90&quot;</span>, niveles_exposicion_tiempo)),</span>
+<span id="cb91-6"><a href="#cb91-6" tabindex="-1"></a>  <span class="at">nivel_91_180  =</span> <span class="fu">as.integer</span>(bin_tiempo_idx_m2 <span class="sc">==</span> <span class="fu">match</span>(<span class="st">&quot;91-180&quot;</span>, niveles_exposicion_tiempo)),</span>
+<span id="cb91-7"><a href="#cb91-7" tabindex="-1"></a>  <span class="at">nivel_181_270 =</span> <span class="fu">as.integer</span>(bin_tiempo_idx_m2 <span class="sc">==</span> <span class="fu">match</span>(<span class="st">&quot;181-270&quot;</span>, niveles_exposicion_tiempo)),</span>
+<span id="cb91-8"><a href="#cb91-8" tabindex="-1"></a>  <span class="at">nivel_271_365 =</span> <span class="fu">as.integer</span>(bin_tiempo_idx_m2 <span class="sc">==</span> <span class="fu">match</span>(<span class="st">&quot;271-365&quot;</span>, niveles_exposicion_tiempo)),</span>
+<span id="cb91-9"><a href="#cb91-9" tabindex="-1"></a>  <span class="at">edad_50_69    =</span> dat<span class="sc">$</span>edad_50_69,</span>
+<span id="cb91-10"><a href="#cb91-10" tabindex="-1"></a>  <span class="at">edad_70_plus  =</span> dat<span class="sc">$</span>edad_70_plus,</span>
+<span id="cb91-11"><a href="#cb91-11" tabindex="-1"></a>  <span class="at">sexo          =</span> dat<span class="sc">$</span>sexo,</span>
+<span id="cb91-12"><a href="#cb91-12" tabindex="-1"></a>  <span class="at">comorbilidad  =</span> dat<span class="sc">$</span>comorbilidad</span>
+<span id="cb91-13"><a href="#cb91-13" tabindex="-1"></a>)</span>
+<span id="cb91-14"><a href="#cb91-14" tabindex="-1"></a></span>
+<span id="cb91-15"><a href="#cb91-15" tabindex="-1"></a>modelo_quap_m2 <span class="ot">&lt;-</span> <span class="fu">quap</span>(</span>
+<span id="cb91-16"><a href="#cb91-16" tabindex="-1"></a>  <span class="fu">alist</span>(</span>
+<span id="cb91-17"><a href="#cb91-17" tabindex="-1"></a>    hospitalizada <span class="sc">~</span> <span class="fu">dbinom</span>(<span class="dv">1</span>, p),</span>
+<span id="cb91-18"><a href="#cb91-18" tabindex="-1"></a>    <span class="fu">logit</span>(p) <span class="ot">&lt;-</span> a <span class="sc">+</span></span>
+<span id="cb91-19"><a href="#cb91-19" tabindex="-1"></a>      bT_0_90    <span class="sc">*</span> nivel_0_90 <span class="sc">+</span></span>
+<span id="cb91-20"><a href="#cb91-20" tabindex="-1"></a>      bT_91_180  <span class="sc">*</span> nivel_91_180 <span class="sc">+</span></span>
+<span id="cb91-21"><a href="#cb91-21" tabindex="-1"></a>      bT_181_270 <span class="sc">*</span> nivel_181_270 <span class="sc">+</span></span>
+<span id="cb91-22"><a href="#cb91-22" tabindex="-1"></a>      bT_271_365 <span class="sc">*</span> nivel_271_365 <span class="sc">+</span></span>
+<span id="cb91-23"><a href="#cb91-23" tabindex="-1"></a>      bE50 <span class="sc">*</span> edad_50_69 <span class="sc">+</span></span>
+<span id="cb91-24"><a href="#cb91-24" tabindex="-1"></a>      bE70 <span class="sc">*</span> edad_70_plus <span class="sc">+</span></span>
+<span id="cb91-25"><a href="#cb91-25" tabindex="-1"></a>      bS <span class="sc">*</span> sexo <span class="sc">+</span></span>
+<span id="cb91-26"><a href="#cb91-26" tabindex="-1"></a>      bCom <span class="sc">*</span> comorbilidad,</span>
+<span id="cb91-27"><a href="#cb91-27" tabindex="-1"></a>    a <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
+<span id="cb91-28"><a href="#cb91-28" tabindex="-1"></a>    bT_0_90    <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
+<span id="cb91-29"><a href="#cb91-29" tabindex="-1"></a>    bT_91_180  <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
+<span id="cb91-30"><a href="#cb91-30" tabindex="-1"></a>    bT_181_270 <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
+<span id="cb91-31"><a href="#cb91-31" tabindex="-1"></a>    bT_271_365 <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
+<span id="cb91-32"><a href="#cb91-32" tabindex="-1"></a>    bE50 <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
+<span id="cb91-33"><a href="#cb91-33" tabindex="-1"></a>    bE70 <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
+<span id="cb91-34"><a href="#cb91-34" tabindex="-1"></a>    bS <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>),</span>
+<span id="cb91-35"><a href="#cb91-35" tabindex="-1"></a>    bCom <span class="sc">~</span> <span class="fu">dnorm</span>(<span class="dv">0</span>, <span class="fl">2.5</span>)</span>
+<span id="cb91-36"><a href="#cb91-36" tabindex="-1"></a>  ),</span>
+<span id="cb91-37"><a href="#cb91-37" tabindex="-1"></a>  <span class="at">data =</span> dat_m2</span>
+<span id="cb91-38"><a href="#cb91-38" tabindex="-1"></a>)</span>
+<span id="cb91-39"><a href="#cb91-39" tabindex="-1"></a></span>
+<span id="cb91-40"><a href="#cb91-40" tabindex="-1"></a><span class="co"># rethinking::WAIC calcula automáticamente lppd, pWAIC y SE</span></span>
+<span id="cb91-41"><a href="#cb91-41" tabindex="-1"></a></span>
+<span id="cb91-42"><a href="#cb91-42" tabindex="-1"></a>waic_M1 <span class="ot">&lt;-</span> rethinking<span class="sc">::</span><span class="fu">WAIC</span>(modelo_quap_debil, <span class="at">n =</span> N_samp)</span>
+<span id="cb91-43"><a href="#cb91-43" tabindex="-1"></a>waic_M2 <span class="ot">&lt;-</span> rethinking<span class="sc">::</span><span class="fu">WAIC</span>(modelo_quap_m2,    <span class="at">n =</span> N_samp)</span>
+<span id="cb91-44"><a href="#cb91-44" tabindex="-1"></a></span>
+<span id="cb91-45"><a href="#cb91-45" tabindex="-1"></a>tabla_waic <span class="ot">&lt;-</span> <span class="cf">function</span>(x) {</span>
+<span id="cb91-46"><a href="#cb91-46" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">is.atomic</span>(x) <span class="sc">&amp;&amp;</span> <span class="sc">!</span><span class="fu">is.null</span>(<span class="fu">names</span>(x))) {</span>
+<span id="cb91-47"><a href="#cb91-47" tabindex="-1"></a>    <span class="fu">return</span>(tibble<span class="sc">::</span><span class="fu">tibble</span>(<span class="at">metrica =</span> <span class="fu">names</span>(x), <span class="at">valor =</span> <span class="fu">as.numeric</span>(x)))</span>
+<span id="cb91-48"><a href="#cb91-48" tabindex="-1"></a>  }</span>
+<span id="cb91-49"><a href="#cb91-49" tabindex="-1"></a></span>
+<span id="cb91-50"><a href="#cb91-50" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">is.list</span>(x) <span class="sc">&amp;&amp;</span> <span class="sc">!</span><span class="fu">is.null</span>(<span class="fu">names</span>(x))) {</span>
+<span id="cb91-51"><a href="#cb91-51" tabindex="-1"></a>    vals <span class="ot">&lt;-</span> x[<span class="fu">vapply</span>(x, <span class="cf">function</span>(z) <span class="fu">length</span>(z) <span class="sc">==</span> <span class="dv">1</span> <span class="sc">&amp;&amp;</span> <span class="fu">is.numeric</span>(z), <span class="fu">logical</span>(<span class="dv">1</span>))]</span>
+<span id="cb91-52"><a href="#cb91-52" tabindex="-1"></a>    <span class="cf">if</span> (<span class="fu">length</span>(vals) <span class="sc">&gt;</span> <span class="dv">0</span>) {</span>
+<span id="cb91-53"><a href="#cb91-53" tabindex="-1"></a>      <span class="fu">return</span>(tibble<span class="sc">::</span><span class="fu">tibble</span>(<span class="at">metrica =</span> <span class="fu">names</span>(vals), <span class="at">valor =</span> <span class="fu">as.numeric</span>(<span class="fu">unlist</span>(vals))))</span>
+<span id="cb91-54"><a href="#cb91-54" tabindex="-1"></a>    }</span>
+<span id="cb91-55"><a href="#cb91-55" tabindex="-1"></a>  }</span>
+<span id="cb91-56"><a href="#cb91-56" tabindex="-1"></a></span>
+<span id="cb91-57"><a href="#cb91-57" tabindex="-1"></a>  tibble<span class="sc">::</span><span class="fu">tibble</span>(<span class="at">resultado =</span> <span class="fu">capture.output</span>(<span class="fu">print</span>(x)))</span>
+<span id="cb91-58"><a href="#cb91-58" tabindex="-1"></a>}</span>
+<span id="cb91-59"><a href="#cb91-59" tabindex="-1"></a></span>
+<span id="cb91-60"><a href="#cb91-60" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;</span><span class="sc">\n\n</span><span class="st">M1 (agregado):</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>M1 (agregado):</p>
-<div class="sourceCode" id="cb90"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb90-1"><a href="#cb90-1" tabindex="-1"></a><span class="fu">tabla_waic</span>(waic_M1) <span class="sc">%&gt;%</span></span>
-<span id="cb90-2"><a href="#cb90-2" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">where</span>(is.numeric), <span class="sc">~</span> <span class="fu">round</span>(.x, <span class="dv">3</span>))) <span class="sc">%&gt;%</span></span>
-<span id="cb90-3"><a href="#cb90-3" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>()</span></code></pre></div>
+<div class="sourceCode" id="cb92"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb92-1"><a href="#cb92-1" tabindex="-1"></a><span class="fu">tabla_waic</span>(waic_M1) <span class="sc">%&gt;%</span></span>
+<span id="cb92-2"><a href="#cb92-2" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">where</span>(is.numeric), <span class="sc">~</span> <span class="fu">round</span>(.x, <span class="dv">3</span>))) <span class="sc">%&gt;%</span></span>
+<span id="cb92-3"><a href="#cb92-3" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>()</span></code></pre></div>
 <table>
 <thead>
 <tr class="header">
@@ -4622,11 +4651,11 @@ sensibilidad bayesiana anterior.</p>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb91"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb91-1"><a href="#cb91-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;M2 (niveles temporales):</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb93"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb93-1"><a href="#cb93-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;M2 (niveles temporales):</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>M2 (niveles temporales):</p>
-<div class="sourceCode" id="cb92"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb92-1"><a href="#cb92-1" tabindex="-1"></a><span class="fu">tabla_waic</span>(waic_M2) <span class="sc">%&gt;%</span></span>
-<span id="cb92-2"><a href="#cb92-2" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">where</span>(is.numeric), <span class="sc">~</span> <span class="fu">round</span>(.x, <span class="dv">3</span>))) <span class="sc">%&gt;%</span></span>
-<span id="cb92-3"><a href="#cb92-3" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>()</span></code></pre></div>
+<div class="sourceCode" id="cb94"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb94-1"><a href="#cb94-1" tabindex="-1"></a><span class="fu">tabla_waic</span>(waic_M2) <span class="sc">%&gt;%</span></span>
+<span id="cb94-2"><a href="#cb94-2" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">where</span>(is.numeric), <span class="sc">~</span> <span class="fu">round</span>(.x, <span class="dv">3</span>))) <span class="sc">%&gt;%</span></span>
+<span id="cb94-3"><a href="#cb94-3" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>()</span></code></pre></div>
 <table>
 <thead>
 <tr class="header">
@@ -4653,22 +4682,22 @@ sensibilidad bayesiana anterior.</p>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb93"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb93-1"><a href="#cb93-1" tabindex="-1"></a><span class="co"># Comparación directa con rethinking::compare</span></span>
-<span id="cb93-2"><a href="#cb93-2" tabindex="-1"></a></span>
-<span id="cb93-3"><a href="#cb93-3" tabindex="-1"></a>comp <span class="ot">&lt;-</span> rethinking<span class="sc">::</span><span class="fu">compare</span>(modelo_quap_debil, modelo_quap_m2)</span>
-<span id="cb93-4"><a href="#cb93-4" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Comparación de modelos:</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb95"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb95-1"><a href="#cb95-1" tabindex="-1"></a><span class="co"># Comparación directa con rethinking::compare</span></span>
+<span id="cb95-2"><a href="#cb95-2" tabindex="-1"></a></span>
+<span id="cb95-3"><a href="#cb95-3" tabindex="-1"></a>comp <span class="ot">&lt;-</span> rethinking<span class="sc">::</span><span class="fu">compare</span>(modelo_quap_debil, modelo_quap_m2)</span>
+<span id="cb95-4"><a href="#cb95-4" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Comparación de modelos:</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>Comparación de modelos:</p>
-<div class="sourceCode" id="cb94"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb94-1"><a href="#cb94-1" tabindex="-1"></a>tabla_comp <span class="ot">&lt;-</span> <span class="fu">tryCatch</span>({</span>
-<span id="cb94-2"><a href="#cb94-2" tabindex="-1"></a>  comp_df <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(<span class="fu">as.matrix</span>(comp))</span>
-<span id="cb94-3"><a href="#cb94-3" tabindex="-1"></a>  comp_df<span class="sc">$</span>modelo <span class="ot">&lt;-</span> <span class="fu">rownames</span>(comp_df)</span>
-<span id="cb94-4"><a href="#cb94-4" tabindex="-1"></a>  comp_df <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">relocate</span>(modelo)</span>
-<span id="cb94-5"><a href="#cb94-5" tabindex="-1"></a>}, <span class="at">error =</span> <span class="cf">function</span>(e) {</span>
-<span id="cb94-6"><a href="#cb94-6" tabindex="-1"></a>  tibble<span class="sc">::</span><span class="fu">tibble</span>(<span class="at">resultado =</span> <span class="fu">capture.output</span>(<span class="fu">print</span>(comp)))</span>
-<span id="cb94-7"><a href="#cb94-7" tabindex="-1"></a>})</span>
-<span id="cb94-8"><a href="#cb94-8" tabindex="-1"></a></span>
-<span id="cb94-9"><a href="#cb94-9" tabindex="-1"></a>tabla_comp <span class="sc">%&gt;%</span></span>
-<span id="cb94-10"><a href="#cb94-10" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">where</span>(is.numeric), <span class="sc">~</span> <span class="fu">round</span>(.x, <span class="dv">3</span>))) <span class="sc">%&gt;%</span></span>
-<span id="cb94-11"><a href="#cb94-11" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>()</span></code></pre></div>
+<div class="sourceCode" id="cb96"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb96-1"><a href="#cb96-1" tabindex="-1"></a>tabla_comp <span class="ot">&lt;-</span> <span class="fu">tryCatch</span>({</span>
+<span id="cb96-2"><a href="#cb96-2" tabindex="-1"></a>  comp_df <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(<span class="fu">as.matrix</span>(comp))</span>
+<span id="cb96-3"><a href="#cb96-3" tabindex="-1"></a>  comp_df<span class="sc">$</span>modelo <span class="ot">&lt;-</span> <span class="fu">rownames</span>(comp_df)</span>
+<span id="cb96-4"><a href="#cb96-4" tabindex="-1"></a>  comp_df <span class="sc">%&gt;%</span> dplyr<span class="sc">::</span><span class="fu">relocate</span>(modelo)</span>
+<span id="cb96-5"><a href="#cb96-5" tabindex="-1"></a>}, <span class="at">error =</span> <span class="cf">function</span>(e) {</span>
+<span id="cb96-6"><a href="#cb96-6" tabindex="-1"></a>  tibble<span class="sc">::</span><span class="fu">tibble</span>(<span class="at">resultado =</span> <span class="fu">capture.output</span>(<span class="fu">print</span>(comp)))</span>
+<span id="cb96-7"><a href="#cb96-7" tabindex="-1"></a>})</span>
+<span id="cb96-8"><a href="#cb96-8" tabindex="-1"></a></span>
+<span id="cb96-9"><a href="#cb96-9" tabindex="-1"></a>tabla_comp <span class="sc">%&gt;%</span></span>
+<span id="cb96-10"><a href="#cb96-10" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">where</span>(is.numeric), <span class="sc">~</span> <span class="fu">round</span>(.x, <span class="dv">3</span>))) <span class="sc">%&gt;%</span></span>
+<span id="cb96-11"><a href="#cb96-11" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>()</span></code></pre></div>
 <table style="width:100%;">
 <colgroup>
 <col width="23%" />
@@ -4715,12 +4744,12 @@ sensibilidad bayesiana anterior.</p>
 </tr>
 </tbody>
 </table>
-<div class="sourceCode" id="cb95"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb95-1"><a href="#cb95-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Interpretación: M1 tiene menor WAIC en este render, pero la diferencia es pequeña/moderada y no decide causalidad. WAIC no descarta heterogeneidad temporal ni edad-tiempo; esa lectura queda en Pasos 3 y 4.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb97"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb97-1"><a href="#cb97-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Interpretación: M1 tiene menor WAIC en este render, pero la diferencia es pequeña/moderada y no decide causalidad. WAIC no descarta heterogeneidad temporal ni edad-tiempo; esa lectura queda en Pasos 3 y 4.</span><span class="sc">\n\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>Interpretación: M1 tiene menor WAIC en este render, pero la
 diferencia es pequeña/moderada y no decide causalidad. WAIC no descarta
 heterogeneidad temporal ni edad-tiempo; esa lectura queda en Pasos 3 y
 4.</p>
-<div class="sourceCode" id="cb96"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb96-1"><a href="#cb96-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;WAIC evalúa desempeño predictivo comparado entre M1 (`vacunada`) y M2 (factor temporal único). No valida ni refuta la grilla edad × tiempo del Paso 4.</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb98"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb98-1"><a href="#cb98-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;WAIC evalúa desempeño predictivo comparado entre M1 (`vacunada`) y M2 (factor temporal único). No valida ni refuta la grilla edad × tiempo del Paso 4.</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div>
 <p>WAIC evalúa desempeño predictivo comparado entre M1
 (<code>vacunada</code>) y M2 (factor temporal único). No valida ni
 refuta la grilla edad × tiempo del Paso 4.</p>

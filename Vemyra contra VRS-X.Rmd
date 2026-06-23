@@ -3,7 +3,7 @@ title: "Velmyra contra VRS-X"
 author: "Hugo Granchetti, Ignacio Monteros Domogalla (Grupo E)"
 encoding: UTF-8
 output:
-  html_document:
+  html_document:re
     toc: true
     toc_float:
       collapsed: false
@@ -691,9 +691,7 @@ N_samp_sens <- N_samp   # alias para paso 6
   tabla_VE_tiempo
 ```
 
-Estas VE por bin comparan descriptiva y exploratoriamente cada grupo vacunado
-contra personas no vacunadas. No son una estimación causal pura de waning:
-`No vacunada` es la referencia, no un quinto bin temporal.
+Estas VE por bin comparan descriptiva y exploratoriamente cada grupo vacunado contra personas no vacunadas. No son una estimación causal pura de waning: `No vacunada` es la referencia, no un quinto bin temporal.
 
 
 # PASO 4 — Estratificación edad sola y cruce edad × tiempo
@@ -941,16 +939,34 @@ coordinates(dag_velmyra) <- list(
 plot(dag_velmyra)
 
 cat("\n\nConjuntos de ajuste identificados por `dagitty` para `V -> Y`:\n\n")
-tabla_ajustes <- tibble::tibble(
-  salida = capture.output(adjustmentSets(dag_velmyra, exposure = "V", outcome = "Y"))
-)
-knitr::kable(tabla_ajustes, col.names = "Resultado")
 
-cat("\n\nInterpretación: `No vacunada` corresponde a `V = 0` en este DAG; no es un nodo causal nuevo. `T` representa `dias_desde_vacunacion`, una variable temporal medida y derivada de la vacunación. Por eso aparece como descendiente de `V`, relevante para waning y composición calendario-tiempo, pero no se ajusta como confusor basal del efecto binario de vacunarse.\n\n")
-cat("La flecha `edad -> T` representa priorización y calendario de vacunación por edad: distintos grupos etarios pueden quedar con distribuciones diferentes de días desde vacunación.\n\n")
-cat("`U` (`estado de salud previo / sesgo del vacunado sano`) abre un camino de puerta trasera `V <- U -> Y`. Como `U` no está observado, edad, sexo, comorbilidad y centro no cierran completamente ese camino; el ajuste medido reduce confusión observable, pero no identifica por completo el sesgo residual.\n\n")
-cat("Dirección del sesgo: si `U` mejora la salud basal y también aumenta la probabilidad de vacunarse, el sesgo infla la VE observada. El modelo oficial ajusta por edad, sexo, comorbilidad y centro; el `quap` simplificado usa `edad_cat`, sexo y comorbilidad. En ambos casos, `U` residual justifica la sensibilidad del Paso 6.\n\n")
-cat("Paso 6 cuantifica el impacto sobre el contraste vacunados vs no vacunados.\n")
+ajustes_VY <- capture.output(
+  adjustmentSets(dag_velmyra, exposure = "V", outcome = "Y")
+)
+
+if (length(ajustes_VY) == 0) {
+  tabla_ajustes <- tibble::tibble(
+    Resultado = "No hay un conjunto de ajuste medido suficiente bajo este DAG."
+  )
+} else {
+  tabla_ajustes <- tibble::tibble(Resultado = ajustes_VY)
+}
+
+knitr::kable(tabla_ajustes)
+
+cat("\n\nEl DAG se lee en dos niveles. Para la pregunta causal principal, `V -> Y` representa el efecto binario de vacunarse sobre hospitalización. Las covariables medidas (edad, sexo, comorbilidad y centro) pueden afectar tanto la probabilidad de vacunarse como el riesgo de hospitalización, por lo que forman caminos de confusión del tipo `C -> V` y `C -> Y`.\n\n")
+
+cat("En términos de los patrones básicos del DAG, las covariables medidas y `U` forman bifurcaciones o forks de confusión; `V -> T -> Y` es una cadena o pipe asociada al mecanismo temporal; y no se introduce ningún collider como variable de ajuste.\n\n")
+
+cat("El nodo `U` representa estado de salud previo, acceso al sistema u otros factores no observados vinculados al sesgo del vacunado sano. Este nodo abre el camino de puerta trasera `V <- U -> Y`. Como `U` no está observado, el ajuste por edad, sexo, comorbilidad y centro reduce la confusión observable, pero no identifica por completo el efecto causal de `V` sobre `Y`.\n\n")
+
+cat("Por eso, la ausencia de un conjunto de ajuste medido suficiente no debe leerse como un error del DAG, sino como la razón causal para realizar el análisis de sensibilidad del Paso 6. Ese paso cuantifica cuánto podría desplazarse el efecto observado si existe confusión residual por `U`.\n\n")
+
+cat("El nodo `T` representa `dias_desde_vacunacion`. No es un confusor basal del contraste vacunada vs no vacunada: es una variable temporal derivada de la vacunación. Por eso aparece como descendiente de `V`, útil para razonar sobre waning y composición edad-tiempo/calendario, pero no se ajusta como si fuera una covariable pretratamiento en el efecto binario de vacunarse.\n\n")
+
+cat("La flecha `edad -> T` resume la priorización y el calendario de vacunación por edad: distintos grupos etarios pueden quedar con distribuciones diferentes de días desde vacunación. Esta parte del DAG conecta con los análisis estratificados de los Pasos 3 y 4, no con una identificación causal plena del waning.\n\n")
+
+cat("Dirección del sesgo: si `U` mejora la salud basal y también aumenta la probabilidad de vacunarse, la VE observada queda inflada. En ese caso, el efecto causal corregido sería menos protector que el estimado crudo o ajustado solo por covariables medidas.\n")
 ```
 
 # PASO 6 — Sensibilidad a confusor no medido (vía paramétrica bayesiana)
@@ -2360,42 +2376,18 @@ q2_prob_v2 <- fmt_pct(q2_v2$prob_VE_mayor_50_pct)
 
 # Discusión ética y límites del reanálisis
 
-El reanálisis con la cohorte ampliada no invalida el estudio original: mantiene
-la dirección posterior observada en v1, aunque actualiza magnitudes e
-intervalos. Para la Queja 1, la VE tardía en `271-365` días pasa de
-`r q1_v1_resumen` en v1 a `r q1_v2_resumen` en v2, y
-`P(VE_271-365 < VE_0-90 | datos)` pasa de `r q1_prob_v1` a `r q1_prob_v2`.
-La interpretación operativa se mantiene: riesgo residual y protección menor
-que en el bin temprano, sin extrapolar directamente a 14 meses porque el soporte
-observado llega a 365 días.
+El reanálisis con la cohorte ampliada no invalida el estudio original: mantiene la dirección posterior observada en v1, aunque actualiza magnitudes e intervalos. Para la Queja 1, la VE tardía en `271-365` días pasa de `r q1_v1_resumen` en v1 a `r q1_v2_resumen` en v2, y
+`P(VE_271-365 < VE_0-90 | datos)` pasa de `r q1_prob_v1` a `r q1_prob_v2`. La interpretación operativa se mantiene: riesgo residual y protección menor que en el bin temprano, sin extrapolar directamente a 14 meses porque el soporte observado llega a 365 días.
 
-Para la Queja 2, la celda `65+ x 181-270` pasa de `r q2_v1_resumen` en v1 a
-`r q2_v2_resumen` en v2. La probabilidad posterior de VE mayor a 50% baja de
-`r q2_prob_v1` a `r q2_prob_v2`, pero sigue sosteniendo una conclusión
-poblacional compatible con protección relevante y no absoluta.
+Para la Queja 2, la celda `65+ x 181-270` pasa de `r q2_v1_resumen` en v1 a `r q2_v2_resumen` en v2. La probabilidad posterior de VE mayor a 50% baja de `r q2_prob_v1` a `r q2_prob_v2`, pero sigue sosteniendo una conclusión poblacional compatible con protección relevante y no absoluta.
 
-El DAG, el Paso 6 y el Paso 7 cumplen funciones distintas. El DAG explicita
-supuestos causales y estructura de identificación; no necesita una versión
-nueva por tener más filas. `vacunacion_previa` agrega información medida y puede
-funcionar como proxy parcial de historia de riesgo, pero no elimina el confusor
-latente `U`. Por eso la sensibilidad a confusor no medido del Paso 6 sigue
-siendo un límite común a v1 y v2: la cohorte ampliada aporta robustez
-descriptiva, no identificación causal plena. El WAIC original cumple la consigna
-metodológica de comparación predictiva; repetirlo para la cohorte ampliada sería
-accesorio y podría distraer de la respuesta operativa a las quejas.
+El DAG, el Paso 6 y el Paso 7 cumplen funciones distintas. El DAG explicita supuestos causales y estructura de identificación; no necesita una versión nueva por tener más filas. `vacunacion_previa` agrega información medida y puede funcionar como proxy parcial de historia de riesgo, pero no elimina el confusor latente `U`. Por eso la sensibilidad a confusor no medido del Paso 6 sigue siendo un límite común a v1 y v2: la cohorte ampliada aporta robustez descriptiva, no identificación causal plena. El WAIC original cumple la consigna metodológica de comparación predictiva; repetirlo para la cohorte ampliada sería accesorio y podría distraer de la respuesta operativa a las quejas.
 
 Límites concretos:
 
-- La confusión no medida puede desplazar el efecto observado; el Paso 6 muestra
-  sensibilidad, pero no identifica completamente ese sesgo.
-- Falta información de persona-tiempo y calendario, por lo que las comparaciones
-  por tiempo desde vacunación son descriptivas y exploratorias.
-- El soporte directo de los datos llega hasta 365 días; no corresponde extrapolar
-  automáticamente a 14 meses.
-- Algunas celdas edad x tiempo tienen pocos datos o `n_V = 0`, por lo que sus
-  medianas e intervalos deben tratarse como inestables.
+- La confusión no medida puede desplazar el efecto observado; el Paso 6 muestra sensibilidad, pero no identifica completamente ese sesgo.
+- Falta información de persona-tiempo y calendario, por lo que las comparaciones por tiempo desde vacunación son descriptivas y exploratorias.
+- El soporte directo de los datos llega hasta 365 días; no corresponde extrapolar automáticamente a 14 meses.
+- Algunas celdas edad x tiempo tienen pocos datos o `n_V = 0`, por lo que sus medianas e intervalos deben tratarse como inestables.
 
-La comunicación responsable evita dos errores: prometer protección individual
-absoluta y convertir un análisis exploratorio en una recomendación clínica
-directa. La lectura adecuada es poblacional, probabilística y condicionada por
-las limitaciones del diseño observacional.
+La comunicación responsable evita dos errores: prometer protección individual absoluta y convertir un análisis exploratorio en una recomendación clínica directa. La lectura adecuada es poblacional, probabilística y condicionada por las limitaciones del diseño observacional.
